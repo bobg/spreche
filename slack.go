@@ -1,4 +1,4 @@
-package crocs
+package main
 
 import (
 	"context"
@@ -71,7 +71,7 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 	if len(m) == 0 {
 		return nil
 	}
-	org, repo := m[1], m[2]
+	owner, repo := m[1], m[2]
 	prnum, err := strconv.Atoi(m[3])
 	if err != nil {
 		// xxx
@@ -98,7 +98,7 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 		if err != nil {
 			// xxx
 		}
-		comment, _, err = s.GHClient.PullRequests.CreateCommentInReplyTo(ctx, org, repo, prnum, body, commentID)
+		comment, _, err = s.GHClient.PullRequests.CreateCommentInReplyTo(ctx, owner, repo, prnum, body, commentID)
 		if err != nil {
 			// xxx
 		}
@@ -106,7 +106,7 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 		// Unthreaded.
 
 		timestamp = ev.TimeStamp
-		comment, _, err = s.GHClient.PullRequests.CreateComment(ctx, org, repo, prnum, comment)
+		comment, _, err = s.GHClient.PullRequests.CreateComment(ctx, owner, repo, prnum, comment)
 		if err != nil {
 			// xxx
 		}
@@ -126,4 +126,22 @@ func (s *Service) OnReactionAdded(ctx context.Context, ev *slackevents.ReactionA
 func (s *Service) OnReactionRemoved(ctx context.Context, ev *slackevents.ReactionRemovedEvent) error {
 	// xxx
 	return nil
+}
+
+// TODO: cache results
+func (s *Service) GetChannelID(ctx context.Context, name string) (string, error) {
+	params := slack.GetConversationsParameters{Limit: 100}
+	for {
+		channels, next, err := s.SlackClient.GetConversationsContext(ctx, &params)
+		if err != nil {
+			// xxx
+		}
+		for _, channel := range channels {
+			if channel.Name == name {
+				return channel.ID, nil
+			}
+		}
+		params.Cursor = next
+	}
+	return "", fmt.Errorf("channel %s not found", name)
 }

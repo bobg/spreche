@@ -1,4 +1,4 @@
-package crocs
+package main
 
 import (
 	"context"

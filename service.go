@@ -1,4 +1,4 @@
-package crocs
+package main
 
 import (
 	"github.com/google/go-github/v44/github"
