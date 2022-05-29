@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 
+	"github.com/bobg/mid"
 	"github.com/google/go-github/v44/github"
 	"github.com/pkg/errors"
 	"github.com/slack-go/slack"
@@ -17,7 +18,9 @@ import (
 
 var channelRegex = regexp.MustCompile(`^pr-([^/]+)/([^/]+)-(\d+)$`)
 
-func (s *Service) OnSlackEvent(ctx context.Context, req *http.Request) error {
+func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
+	ctx := req.Context()
+
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		return errors.Wrap(err, "reading request body")
@@ -39,7 +42,7 @@ func (s *Service) OnSlackEvent(ctx context.Context, req *http.Request) error {
 	}
 	switch ev.Type {
 	case slackevents.URLVerification:
-		return s.OnURLVerification(ctx, ev)
+		return s.OnURLVerification(w, ev)
 
 	case slackevents.CallbackEvent:
 		switch ev := ev.Data.(type) {
@@ -56,18 +59,31 @@ func (s *Service) OnSlackEvent(ctx context.Context, req *http.Request) error {
 
 		return fmt.Errorf("unknown data type %T for CallbackEvent", ev.Data)
 	}
+
+	// Ignore other event types. (xxx log them?)
+	return nil
 }
 
-func (s *Service) OnURLVerification(ctx context.Context, ev slackevents.EventsAPIEvent) error {
-	// xxx
-	return nil
+func (s *Service) OnURLVerification(w http.ResponseWriter, ev slackevents.EventsAPIEvent) error {
+	v, ok := ev.Data.(*slackevents.EventsAPIURLVerificationEvent)
+	if !ok {
+		// xxx
+	}
+	return mid.RespondJSON(w, slackevents.ChallengeResponse{Challenge: v.Challenge})
 }
 
 func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) error {
 	if ev.ChannelType != "channel" {
 		return nil
 	}
-	m := channelRegex.FindStringSubmatch(s.Channel)
+
+	channelID := ev.Channel
+	channelName, err := s.GetChannelName(ctx, channelID)
+	if err != nil {
+		// xxx
+	}
+
+	m := channelRegex.FindStringSubmatch(channelName)
 	if len(m) == 0 {
 		return nil
 	}
@@ -79,7 +95,7 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 
 	// xxx filter out bot messages (like the ones from this program!)
 
-	ghUser, err := s.SlackToGHUser(ev.User)
+	ghUser, err := s.SlackToGHUser(ctx, ev.User)
 	if err != nil {
 		// xxx
 	}
@@ -88,28 +104,24 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 
 	comment := &github.PullRequestComment{
 		Body: &body,
-		User: ghUser,
+		User: &github.User{ // xxx ?
+			Login: &ghUser,
+		},
 	}
 	timestamp := ev.ThreadTimeStamp
 	if timestamp != "" {
 		// Threaded reply.
 
-		commentID, err := s.LookupGHCommentIDFromSlackTimestamp(ctx, timestamp)
+		commentID, err := s.LookupGHCommentIDFromSlackTimestamp(ctx, channelID, timestamp)
 		if err != nil {
 			// xxx
 		}
-		comment, _, err = s.GHClient.PullRequests.CreateCommentInReplyTo(ctx, owner, repo, prnum, body, commentID)
-		if err != nil {
-			// xxx
-		}
+		comment.InReplyTo = &commentID
 	} else {
-		// Unthreaded.
-
 		timestamp = ev.TimeStamp
-		comment, _, err = s.GHClient.PullRequests.CreateComment(ctx, owner, repo, prnum, comment)
-		if err != nil {
-			// xxx
-		}
+	}
+	comment, _, err = s.GHClient.PullRequests.CreateComment(ctx, owner, repo, prnum, comment)
+	if err != nil {
 		// xxx
 	}
 
@@ -141,7 +153,18 @@ func (s *Service) GetChannelID(ctx context.Context, name string) (string, error)
 				return channel.ID, nil
 			}
 		}
+		if next == "" {
+			return "", fmt.Errorf("channel %s not found", name)
+		}
 		params.Cursor = next
 	}
-	return "", fmt.Errorf("channel %s not found", name)
+}
+
+// TODO: cache results
+func (s *Service) GetChannelName(ctx context.Context, channelID string) (string, error) {
+	ch, err := s.SlackClient.GetConversationInfoContext(ctx, channelID, false)
+	if err != nil {
+		// xxx
+	}
+	return ch.Name, nil
 }

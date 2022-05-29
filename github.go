@@ -84,10 +84,10 @@ func (s *Service) PROpened(ctx context.Context, ev *github.PullRequestEvent) err
 		pr   = ev.PullRequest
 	)
 
-	chname := fmt.Sprintf("pr-%s/%s-%d", *repo.Organization.Name, *repo.Name, *ev.Number)
+	chname := fmt.Sprintf("pr-%s-%d", *repo.FullName, *ev.Number)
 	ch, err := s.SlackClient.CreateConversationContext(ctx, chname, false)
 	if err != nil {
-		return errors.Wrapf(err, "creating channel %s")
+		return errors.Wrapf(err, "creating channel %s", chname)
 	}
 
 	topic := fmt.Sprintf("Discussion of %s: %s", *pr.URL, *pr.Title)
@@ -154,7 +154,7 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 }
 
 func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestReviewCommentEvent) error {
-	channelName := fmt.Sprintf("pr-%s-%d", ev.Repo.FullName, *ev.PullRequest.Number)
+	channelName := fmt.Sprintf("pr-%s-%d", *ev.Repo.FullName, *ev.PullRequest.Number)
 	channelID, err := s.GetChannelID(ctx, channelName)
 	if err != nil {
 		// xxx
@@ -164,7 +164,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 		slack.MsgOptionText(*ev.Comment.Body, false), // xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
 	}
 	if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
-		threadTimestamp, err := s.LookupThreadTimestamp(ctx, *ev.Comment.InReplyTo)
+		threadTimestamp, err := s.LookupThreadTimestamp(ctx, channelID, *ev.Comment.InReplyTo)
 		if err != nil {
 			// xxx
 		}

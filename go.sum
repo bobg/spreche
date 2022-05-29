@@ -2,6 +2,8 @@ github.com/bobg/go-generics v0.4.0 h1:jFxunbQhargut98uOAkqCFpKXTdKyiCz0Oep+dA3YY
 github.com/bobg/go-generics v0.4.0/go.mod h1:2c0zc1xzeC52OM0sKB4uUbb/OD90QFpJNIn984TKFBQ=
 github.com/bobg/mid v1.6.0 h1:swNzZfBm+1IasbM0HWbMasOGP+QtO2A/QXjh9//qwMw=
 github.com/bobg/mid v1.6.0/go.mod h1:0XdctoS8z3lTMHzEyuHDo8vDrbvdbnBQqwPpTacYqc8=
+github.com/bobg/mid v1.7.0 h1:WQA2dI8EjYUz9r839EjWSICQPqd2p9VwUvQfUsNeAWc=
+github.com/bobg/mid v1.7.0/go.mod h1:0XdctoS8z3lTMHzEyuHDo8vDrbvdbnBQqwPpTacYqc8=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-test/deep v1.0.4/go.mod h1:wGDj63lr65AM2AQyKZd/NYHGb0R+1RLqB8NKt3aSFNA=
 github.com/golang/protobuf v1.3.1/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
@@ -16,6 +18,8 @@ github.com/google/go-querystring v1.1.0 h1:AnCroh3fv4ZBgVIf1Iwtovgjaw/GiKJo8M8yD
 github.com/google/go-querystring v1.1.0/go.mod h1:Kcdr2DB4koayq7X8pmAG4sNG59So17icRSOU623lUBU=
 github.com/gorilla/websocket v1.4.2 h1:+/TMaTYc4QFitKJxsQ7Yye35DkWvkdLcvGKqM+x0Ufc=
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
+github.com/mattn/go-sqlite3 v1.14.12 h1:TJ1bhYJPV44phC+IMu1u2K/i5RriLTPe+yc68XDJ1Z0=
+github.com/mattn/go-sqlite3 v1.14.12/go.mod h1:NyWgC/yNuGj7Q9rpYnZvas74GogHl5/Z4A/KQRfk6bU=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=

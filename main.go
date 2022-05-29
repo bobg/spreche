@@ -1,36 +1,47 @@
 package main
 
 import (
-	"context"
+	"database/sql"
+	"flag"
+	"log"
+	"net/http"
 
 	"github.com/bobg/mid"
 	"github.com/google/go-github/v44/github"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/slack-go/slack"
-	"golang.org/x/oauth2"
 )
 
 func main() {
-	ctx := context.Background()
-	httpClient := oauth2.NewClient(ctx, tokenSource)
+	var (
+		ghSecret    = flag.String("ghsecret", "", "GitHub secret")
+		slackSecret = flag.String("slacksecret", "", "Slack secret")
+		slackToken  = flag.String("slacktoken", "", "Slack token")
+		ghURL       = flag.String("github", "https://github.com", "GitHub server URL")
+		dbstr       = flag.String("db", "crocs.db", "path to crocs Sqlite3 database")
+	)
+	flag.Parse()
 
-	var ghClient *github.Client
-	if isEnterprise {
-		ghClient, err = github.NewEnterpriseClient(baseURL, uploadURL, httpClient)
-		if err != nil {
-			// xxx
-		}
-	} else {
-		ghClient = github.NewClient(httpClient)
+	ghClient, err := github.NewEnterpriseClient(*ghURL, *ghURL, nil)
+	if err != nil {
+		// xxx
 	}
 
-	slackClient := slack.New(slackToken)
+	slackClient := slack.New(*slackToken)
+
+	db, err := sql.Open("sqlite3", *dbstr)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	s := &Service{
-		GHSecret:    ghSecret,
-		SlackSecret: slackSecret,
+		GHSecret:    []byte(*ghSecret), // xxx does this need base64-encoding?
+		SlackSecret: *slackSecret,
 		GHClient:    ghClient,
 		SlackClient: slackClient,
+		DB:          db,
 	}
 
-	http.Handle("/github", mid.Err(s.OnGHWebHook))
+	http.Handle("/github", mid.Err(s.OnGHWebhook))
+	http.Handle("/slack", mid.Err(s.OnSlackEvent))
 }
