@@ -102,55 +102,38 @@ func (s *Service) PROpened(ctx context.Context, ev *github.PullRequestEvent) err
 	}
 	ghUsers = append(ghUsers, pr.Assignees...)
 	ghUsers = append(ghUsers, pr.RequestedReviewers...)
-	// xxx also pr.RequestedTeams
+	// xxx also pr.RequestedTeams ?
 
-	// xxx bleh
 	slackUsers, err := s.GHToSlackUsers(ctx, ghUsers)
 	if err != nil {
-		// xxx
+		return errors.Wrap(err, "mapping GitHub to Slack users")
 	}
 
 	if len(slackUsers) > 0 {
 		_, err = s.SlackClient.InviteUsersToConversationContext(ctx, ch.ID, slackUsers...)
 		if err != nil {
-			// xxx
+			return errors.Wrap(err, "inviting users to new channel")
 		}
 	}
 
 	postOptions := []slack.MsgOption{
 		slack.MsgOptionText(*pr.Body, false), // xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
 	}
-	_, msgTimestamp, err := s.SlackClient.PostMessageContext(ctx, ch.ID, postOptions...)
-	if err != nil {
-		// xxx
-	}
-
-	_ = msgTimestamp // xxx
-
-	// xxx update DB
-
-	return nil
+	_, _, err = s.SlackClient.PostMessageContext(ctx, ch.ID, postOptions...)
+	return errors.Wrap(err, "posting new-channel message")
 }
 
 func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEvent) error {
 	channelName := fmt.Sprintf("pr-%s-%d", *ev.Repo.FullName, *ev.PullRequest.Number)
 	channelID, err := s.GetChannelID(ctx, channelName)
 	if err != nil {
-		// xxx
+		return errors.Wrapf(err, "channel not found for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.FullName)
 	}
 	postOptions := []slack.MsgOption{
 		slack.MsgOptionText(*ev.Review.Body, false), // xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
 	}
-	_, msgTimestamp, err := s.SlackClient.PostMessageContext(ctx, channelID, postOptions...)
-	if err != nil {
-		// xxx
-	}
-
-	_ = msgTimestamp // xxx
-
-	// xxx update DB
-
-	return nil
+	_, _, err = s.SlackClient.PostMessageContext(ctx, channelID, postOptions...)
+	return errors.Wrap(err, "posting message")
 }
 
 func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestReviewCommentEvent) error {
@@ -166,21 +149,13 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 	if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
 		comment, err := s.Comments.ByCommentID(ctx, channelID, *ev.Comment.InReplyTo)
 		if err != nil {
-			// xxx
+			return errors.Wrapf(err, "finding comment in channel %s by commentID %d", channelID, *ev.Comment.InReplyTo)
 		}
 		postOptions = append(postOptions, slack.MsgOptionTS(comment.ThreadTimestamp))
 	}
 
-	_, msgTimestamp, err := s.SlackClient.PostMessageContext(ctx, channelID, postOptions...)
-	if err != nil {
-		// xxx
-	}
-
-	_ = msgTimestamp // xxx
-
-	// xxx update DB
-
-	return nil
+	_, _, err = s.SlackClient.PostMessageContext(ctx, channelID, postOptions...)
+	return errors.Wrap(err, "posting message")
 }
 
 func (s *Service) OnPRReviewThread(ctx context.Context, ev *github.PullRequestReviewThreadEvent) error {
