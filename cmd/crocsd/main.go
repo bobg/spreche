@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
@@ -10,10 +11,15 @@ import (
 	"github.com/google/go-github/v44/github"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/slack-go/slack"
+
+	"crocs"
 )
 
 func main() {
 	var (
+		addr        = flag.String("addr", ":3853", "listen address")
+		certfile    = flag.String("certfile", "", "TLS cert file")
+		keyfile     = flag.String("keyfile", "", "TLS key file")
 		ghSecret    = flag.String("ghsecret", "", "GitHub secret")
 		slackSecret = flag.String("slacksecret", "", "Slack secret")
 		slackToken  = flag.String("slacktoken", "", "Slack token")
@@ -24,7 +30,7 @@ func main() {
 
 	ghClient, err := github.NewEnterpriseClient(*ghURL, *ghURL, nil)
 	if err != nil {
-		// xxx
+		log.Fatalf("Creating GitHub client: %s", err)
 	}
 
 	slackClient := slack.New(*slackToken)
@@ -34,7 +40,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	s := &Service{
+	s := &crocs.Service{
 		GHSecret:    []byte(*ghSecret), // xxx does this need base64-encoding?
 		SlackSecret: *slackSecret,
 		GHClient:    ghClient,
@@ -42,6 +48,21 @@ func main() {
 		DB:          db,
 	}
 
-	http.Handle("/github", mid.Err(s.OnGHWebhook))
-	http.Handle("/slack", mid.Err(s.OnSlackEvent))
+	mux := http.NewServeMux()
+	mux.Handle("/github", mid.Err(s.OnGHWebhook))
+	mux.Handle("/slack", mid.Err(s.OnSlackEvent))
+
+	httpServer := &http.Server{
+		Addr:    *addr,
+		Handler: mux,
+	}
+
+	if *certfile != "" && *keyfile != "" {
+		err = httpServer.ListenAndServeTLS(*certfile, *keyfile)
+	} else {
+		err = httpServer.ListenAndServe()
+	}
+	if !errors.Is(err, http.ErrServerClosed) {
+		log.Fatal(err)
+	}
 }
