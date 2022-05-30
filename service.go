@@ -12,6 +12,7 @@ type Service struct {
 	SlackSecret string
 	GHClient    *github.Client
 	SlackClient *slack.Client
+	AdminKey    string
 
 	Comments CommentStore
 	Users    UserStore

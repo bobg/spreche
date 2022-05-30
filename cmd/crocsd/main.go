@@ -1,54 +1,92 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"errors"
-	"flag"
+	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/bobg/mid"
+	"github.com/bobg/subcmd/v2"
 	"github.com/google/go-github/v44/github"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/pkg/errors"
 	"github.com/slack-go/slack"
+	"gopkg.in/yaml.v3"
 
 	"crocs"
 	"crocs/sqlite"
 )
 
 func main() {
-	var (
-		addr        = flag.String("addr", ":3853", "listen address")
-		certfile    = flag.String("certfile", "", "TLS cert file")
-		keyfile     = flag.String("keyfile", "", "TLS key file")
-		ghSecret    = flag.String("ghsecret", "", "GitHub secret")
-		slackSecret = flag.String("slacksecret", "", "Slack secret")
-		slackToken  = flag.String("slacktoken", "", "Slack token")
-		ghURL       = flag.String("github", "https://github.com", "GitHub server URL")
-		dbstr       = flag.String("db", "crocs.db", "path to crocs Sqlite3 database")
-	)
-	flag.Parse()
+	var c maincmd
+	err := subcmd.Run(context.Background(), c, os.Args[1:])
+	if err != nil {
+		log.Fatal(err)
+	}
+}
 
-	ghClient, err := github.NewEnterpriseClient(*ghURL, *ghURL, nil)
+type maincmd struct{}
+
+func (maincmd) Subcmds() subcmd.Map {
+	return subcmd.Commands(
+		"serve", doServe, "run the crocs server", subcmd.Params(
+			"-config", subcmd.String, "config.yml", "path to config file",
+		),
+		"admin", doAdmin, "send an admin command to a crocs server", subcmd.Params(
+			"-url", subcmd.String, "", "base URL of crocs server",
+			"-key", subcmd.String, "", "admin key",
+			"command", subcmd.String, "", "command name",
+		),
+	)
+}
+
+type config struct {
+	Certfile     string
+	Database     string // xxx should have a "sqlite3:" prefix or something to select different backends
+	GithubSecret []byte `yaml:"github_secret"`
+	GithubURL    string `yaml:"github_url"`
+	Keyfile      string
+	Listen       string
+	SlackSecret  string `yaml:"slack_secret"`
+	SlackToken   string `yaml:"slack_token"`
+	AdminKey     string `yaml:"admin_key"`
+}
+
+func doServe(ctx context.Context, configPath string, _ []string) error {
+	f, err := os.Open(configPath)
+	if err != nil {
+		return errors.Wrap(err, "opening config file")
+	}
+	defer f.Close()
+
+	var c config
+	err = yaml.NewDecoder(f).Decode(&c)
+	if err != nil {
+		return errors.Wrap(err, "parsing config file")
+	}
+
+	ghClient, err := github.NewEnterpriseClient(c.GithubURL, c.GithubURL, nil)
 	if err != nil {
 		log.Fatalf("Creating GitHub client: %s", err)
 	}
 
-	slackClient := slack.New(*slackToken)
+	slackClient := slack.New(c.SlackToken)
 
-	ctx := context.Background()
-
-	commentStore, userStore, err := sqlite.Open(ctx, *dbstr)
+	commentStore, userStore, err := sqlite.Open(ctx, c.Database)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	s := &crocs.Service{
-		GHSecret:    []byte(*ghSecret), // xxx does this need base64-encoding?
-		SlackSecret: *slackSecret,
-		GHClient:    ghClient,
-		SlackClient: slackClient,
+		AdminKey:    c.AdminKey,
 		Comments:    commentStore,
+		GHClient:    ghClient,
+		GHSecret:    c.GithubSecret,
+		SlackClient: slackClient,
+		SlackSecret: c.SlackSecret,
 		Users:       userStore,
 	}
 
@@ -57,16 +95,43 @@ func main() {
 	mux.Handle("/slack", mid.Err(s.OnSlackEvent))
 
 	httpServer := &http.Server{
-		Addr:    *addr,
+		Addr:    c.Listen,
 		Handler: mux,
 	}
+	ch := make(chan struct{})
 
-	if *certfile != "" && *keyfile != "" {
-		err = httpServer.ListenAndServeTLS(*certfile, *keyfile)
+	mux.Handle("/admin", mid.JSON(s.OnAdmin(httpServer, ch)))
+
+	if c.Certfile != "" && c.Keyfile != "" {
+		err = httpServer.ListenAndServeTLS(c.Certfile, c.Keyfile)
 	} else {
 		err = httpServer.ListenAndServe()
 	}
+
+	<-ch
+
 	if !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+		return err
 	}
+
+	return nil
+}
+
+func doAdmin(ctx context.Context, url, key, command string, _ []string) error {
+	cmd := crocs.AdminCmd{
+		Key:  key,
+		Name: command,
+	}
+	enc, err := json.Marshal(cmd)
+	if err != nil {
+		return errors.Wrap(err, "marshaling command")
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(enc))
+	if err != nil {
+		return errors.Wrap(err, "preparing request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	var cl http.Client
+	_, err = cl.Do(req)
+	return errors.Wrap(err, "sending command to crocs service")
 }
