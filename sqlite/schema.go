@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS comments (
   PRIMARY KEY (channel_id, thread_timestamp)
 );
 
-CREATE INDEX IF NOT EXISTS channel_comment_index ON thread_timestamps (channel_id, comment_id);
+CREATE INDEX IF NOT EXISTS channel_comment_index ON comments (channel_id, comment_id);
 
 CREATE TABLE IF NOT EXISTS users (
   slack_id TEXT NOT NULL,
@@ -30,16 +30,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS slack_name_index ON users (slack_name);
 CREATE UNIQUE INDEX IF NOT EXISTS github_name_index ON users (github_name);
 `
 
-func Open(ctx context.Context, conn string) (crocs.CommentStore, crocs.UserStore, error) {
+func Open(ctx context.Context, conn string) (crocs.CommentStore, crocs.UserStore, func () error, error) {
 	db, err := sql.Open("sqlite3", conn)
 	if err != nil {
-		return nil, nil, errors.Wrapf(err, "opening %s", conn)
+		return nil, nil, nil, errors.Wrapf(err, "opening %s", conn)
 	}
 	_, err = db.ExecContext(ctx, schema)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "instantiating schema")
+		return nil, nil, nil, errors.Wrap(err, "instantiating schema") // xxx should close db
 	}
-	return &commentStore{db: db}, &userStore{db: db}, nil
+	closer := db.Close
+	return &commentStore{db: db}, &userStore{db: db}, closer, nil
 }
 
 type commentStore struct {

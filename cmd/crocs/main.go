@@ -55,6 +55,12 @@ type config struct {
 	AdminKey     string `yaml:"admin_key"`
 }
 
+var defaultConfig = config{
+	Database:  "crocs.db",
+	GithubURL: "http://github.com",
+	Listen:    ":3853",
+}
+
 func doServe(ctx context.Context, configPath string, _ []string) error {
 	f, err := os.Open(configPath)
 	if err != nil {
@@ -62,7 +68,7 @@ func doServe(ctx context.Context, configPath string, _ []string) error {
 	}
 	defer f.Close()
 
-	var c config
+	c := defaultConfig
 	err = yaml.NewDecoder(f).Decode(&c)
 	if err != nil {
 		return errors.Wrap(err, "parsing config file")
@@ -75,10 +81,11 @@ func doServe(ctx context.Context, configPath string, _ []string) error {
 
 	slackClient := slack.New(c.SlackToken)
 
-	commentStore, userStore, err := sqlite.Open(ctx, c.Database)
+	commentStore, userStore, closer, err := sqlite.Open(ctx, c.Database)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer closer()
 
 	s := &crocs.Service{
 		AdminKey:    c.AdminKey,
