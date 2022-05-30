@@ -164,11 +164,11 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 		slack.MsgOptionText(*ev.Comment.Body, false), // xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
 	}
 	if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
-		threadTimestamp, err := s.LookupThreadTimestamp(ctx, channelID, *ev.Comment.InReplyTo)
+		comment, err := s.Comments.ByCommentID(ctx, channelID, *ev.Comment.InReplyTo)
 		if err != nil {
 			// xxx
 		}
-		postOptions = append(postOptions, slack.MsgOptionTS(threadTimestamp))
+		postOptions = append(postOptions, slack.MsgOptionTS(comment.ThreadTimestamp))
 	}
 
 	_, msgTimestamp, err := s.SlackClient.PostMessageContext(ctx, channelID, postOptions...)

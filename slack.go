@@ -95,39 +95,37 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 
 	// xxx filter out bot messages (like the ones from this program!)
 
-	ghUser, err := s.SlackToGHUser(ctx, ev.User)
+	user, err := s.Users.BySlackID(ctx, ev.User)
 	if err != nil {
 		// xxx
 	}
 
 	body := ev.Text // xxx convert Slack mrkdwn to GitHub Markdown
 
-	comment := &github.PullRequestComment{
+	prComment := &github.PullRequestComment{
 		Body: &body,
 		User: &github.User{ // xxx ?
-			Login: &ghUser,
+			Login: &user.GithubName,
 		},
 	}
 	timestamp := ev.ThreadTimeStamp
 	if timestamp != "" {
 		// Threaded reply.
 
-		commentID, err := s.LookupGHCommentIDFromSlackTimestamp(ctx, channelID, timestamp)
+		comment, err := s.Comments.ByThreadTimestamp(ctx, channelID, timestamp)
 		if err != nil {
 			// xxx
 		}
-		comment.InReplyTo = &commentID
+		prComment.InReplyTo = &comment.CommentID
 	} else {
 		timestamp = ev.TimeStamp
 	}
-	comment, _, err = s.GHClient.PullRequests.CreateComment(ctx, owner, repo, prnum, comment)
+	prComment, _, err = s.GHClient.PullRequests.CreateComment(ctx, owner, repo, prnum, prComment)
 	if err != nil {
 		// xxx
 	}
 
-	// xxx update db - comment.ID is the new commentID associated with timestamp
-
-	return nil
+	return s.Comments.Update(ctx, channelID, timestamp, *prComment.ID)
 }
 
 func (s *Service) OnReactionAdded(ctx context.Context, ev *slackevents.ReactionAddedEvent) error {

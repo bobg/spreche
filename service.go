@@ -2,7 +2,6 @@ package crocs
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/google/go-github/v44/github"
 	"github.com/slack-go/slack"
@@ -14,10 +13,8 @@ type Service struct {
 	GHClient    *github.Client
 	SlackClient *slack.Client
 
-	CommentStore CommentStore
-	UserStore    UserStore
-
-	DB *sql.DB
+	Comments CommentStore
+	Users    UserStore
 }
 
 type CommentStore interface {
@@ -29,7 +26,7 @@ type CommentStore interface {
 type UserStore interface {
 	BySlackID(context.Context, string) (*User, error)
 	BySlackName(context.Context, string) (*User, error)
-	ByGHName(context.Context, string) (*User, error)
+	ByGithubName(context.Context, string) (*User, error)
 }
 
 type Comment struct {
@@ -39,7 +36,7 @@ type Comment struct {
 }
 
 type User struct {
-	SlackID   string
-	SlackName string
-	GHName    string
+	SlackID    string
+	SlackName  string
+	GithubName string
 }

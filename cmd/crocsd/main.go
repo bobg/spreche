@@ -1,7 +1,7 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"errors"
 	"flag"
 	"log"
@@ -13,6 +13,7 @@ import (
 	"github.com/slack-go/slack"
 
 	"crocs"
+	"crocs/sqlite"
 )
 
 func main() {
@@ -35,7 +36,9 @@ func main() {
 
 	slackClient := slack.New(*slackToken)
 
-	db, err := sql.Open("sqlite3", *dbstr)
+	ctx := context.Background()
+
+	commentStore, userStore, err := sqlite.Open(ctx, *dbstr)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,7 +48,8 @@ func main() {
 		SlackSecret: *slackSecret,
 		GHClient:    ghClient,
 		SlackClient: slackClient,
-		DB:          db,
+		Comments:    commentStore,
+		Users:       userStore,
 	}
 
 	mux := http.NewServeMux()
