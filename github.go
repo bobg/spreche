@@ -13,7 +13,7 @@ import (
 func (s *Service) OnGHWebhook(w http.ResponseWriter, req *http.Request) error {
 	ctx := req.Context()
 
-	payload, err := github.ValidatePayload(req, s.GHSecret)
+	payload, err := github.ValidatePayload(req, []byte(s.GHSecret))
 	if err != nil {
 		return errors.Wrap(err, "validating webhook payload")
 	}

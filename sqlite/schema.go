@@ -30,7 +30,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS slack_name_index ON users (slack_name);
 CREATE UNIQUE INDEX IF NOT EXISTS github_name_index ON users (github_name);
 `
 
-func Open(ctx context.Context, conn string) (crocs.CommentStore, crocs.UserStore, func () error, error) {
+func Open(ctx context.Context, conn string) (crocs.CommentStore, crocs.UserStore, func() error, error) {
 	db, err := sql.Open("sqlite3", conn)
 	if err != nil {
 		return nil, nil, nil, errors.Wrapf(err, "opening %s", conn)
