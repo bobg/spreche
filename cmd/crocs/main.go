@@ -44,15 +44,16 @@ func (maincmd) Subcmds() subcmd.Map {
 }
 
 type config struct {
-	Certfile     string
-	Database     string // xxx should have a "sqlite3:" prefix or something to select different backends
-	GithubSecret []byte `yaml:"github_secret"`
-	GithubURL    string `yaml:"github_url"`
-	Keyfile      string
-	Listen       string
-	SlackSecret  string `yaml:"slack_secret"`
-	SlackToken   string `yaml:"slack_token"`
-	AdminKey     string `yaml:"admin_key"`
+	AdminKey           string `yaml:"admin_key"`
+	Certfile           string
+	Database           string // xxx should have a "sqlite3:" prefix or something to select different backends
+	GithubSecret       string `yaml:"github_secret"`
+	GithubURL          string `yaml:"github_url"`
+	Keyfile            string
+	Listen             string
+	SlackClientSecret  string `yaml:"slack_client_secret"`
+	SlackSigningSecret string `yaml:"slack_signing_secret"`
+	SlackToken         string `yaml:"slack_token"`
 }
 
 var defaultConfig = config{
@@ -88,13 +89,14 @@ func doServe(ctx context.Context, configPath string, _ []string) error {
 	defer closer()
 
 	s := &crocs.Service{
-		AdminKey:    c.AdminKey,
-		Comments:    commentStore,
-		GHClient:    ghClient,
-		GHSecret:    c.GithubSecret,
-		SlackClient: slackClient,
-		SlackSecret: c.SlackSecret,
-		Users:       userStore,
+		AdminKey:           c.AdminKey,
+		Comments:           commentStore,
+		GHClient:           ghClient,
+		GHSecret:           c.GithubSecret,
+		SlackClient:        slackClient,
+		SlackClientSecret:  c.SlackClientSecret,
+		SlackSigningSecret: c.SlackSigningSecret,
+		Users:              userStore,
 	}
 
 	mux := http.NewServeMux()
@@ -108,6 +110,8 @@ func doServe(ctx context.Context, configPath string, _ []string) error {
 	ch := make(chan struct{})
 
 	mux.Handle("/admin", mid.JSON(s.OnAdmin(httpServer, ch)))
+
+	log.Printf("Listening on %s", httpServer.Addr)
 
 	if c.Certfile != "" && c.Keyfile != "" {
 		err = httpServer.ListenAndServeTLS(c.Certfile, c.Keyfile)
@@ -133,12 +137,17 @@ func doAdmin(ctx context.Context, url, key, command string, _ []string) error {
 	if err != nil {
 		return errors.Wrap(err, "marshaling command")
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(enc))
+	req, err := http.NewRequestWithContext(ctx, "POST", url+"/admin", bytes.NewReader(enc))
 	if err != nil {
 		return errors.Wrap(err, "preparing request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	var cl http.Client
-	_, err = cl.Do(req)
-	return errors.Wrap(err, "sending command to crocs service")
+	resp, err := cl.Do(req)
+	if err != nil {
+		return errors.Wrap(err, "sending command to crocs service")
+	}
+	defer resp.Body.Close()
+	log.Printf("Response: %s", resp.Status)
+	return nil
 }

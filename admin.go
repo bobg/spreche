@@ -20,9 +20,11 @@ func (s *Service) OnAdmin(httpServer *http.Server, ch chan struct{}) func(contex
 		}
 		switch cmd.Name {
 		case "shutdown":
-			err := httpServer.Shutdown(ctx)
-			close(ch)
-			return err
+			go func() {
+				httpServer.Shutdown(ctx)
+				close(ch)
+			}()
+			return nil
 		}
 
 		return mid.CodeErr{

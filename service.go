@@ -8,11 +8,12 @@ import (
 )
 
 type Service struct {
-	GHSecret    []byte
-	SlackSecret string
-	GHClient    *github.Client
-	SlackClient *slack.Client
-	AdminKey    string
+	AdminKey           string
+	GHClient           *github.Client
+	GHSecret           string
+	SlackClient        *slack.Client
+	SlackClientSecret  string
+	SlackSigningSecret string
 
 	Comments CommentStore
 	Users    UserStore
