@@ -25,7 +25,7 @@ func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 	if err != nil {
 		return errors.Wrap(err, "reading request body")
 	}
-	v, err := slack.NewSecretsVerifier(req.Header, s.SlackSecret)
+	v, err := slack.NewSecretsVerifier(req.Header, s.SlackSigningSecret)
 	if err != nil {
 		return errors.Wrap(err, "creating request verifier")
 	}
