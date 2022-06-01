@@ -129,10 +129,7 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 	if err != nil {
 		return errors.Wrapf(err, "channel not found for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.FullName)
 	}
-	postOptions := []slack.MsgOption{
-		slack.MsgOptionText(*ev.Review.Body, false), // xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
-	}
-	_, _, err = s.SlackClient.PostMessageContext(ctx, channelID, postOptions...)
+	err = s.postMessageToChannelID(ctx, channelID, *ev.Review.Body)
 	return errors.Wrap(err, "posting message")
 }
 
@@ -143,9 +140,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 		// xxx
 	}
 
-	postOptions := []slack.MsgOption{
-		slack.MsgOptionText(*ev.Comment.Body, false), // xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
-	}
+	var postOptions []slack.MsgOption
 	if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
 		comment, err := s.Comments.ByCommentID(ctx, channelID, *ev.Comment.InReplyTo)
 		if err != nil {
@@ -154,7 +149,8 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 		postOptions = append(postOptions, slack.MsgOptionTS(comment.ThreadTimestamp))
 	}
 
-	_, _, err = s.SlackClient.PostMessageContext(ctx, channelID, postOptions...)
+	// xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
+	err = s.postMessageToChannelID(ctx, channelID, *ev.Comment.Body, postOptions...)
 	return errors.Wrap(err, "posting message")
 }
 

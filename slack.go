@@ -166,3 +166,10 @@ func (s *Service) GetChannelName(ctx context.Context, channelID string) (string,
 	}
 	return ch.Name, nil
 }
+
+func (s *Service) postMessageToChannelID(ctx context.Context, channelID, body string, options ...slack.MsgOption) error {
+	// xxx ensure channel exists
+	_, _, err := s.SlackClient.PostMessageContext(ctx, channelID, options...)
+	return err
+	
+}
