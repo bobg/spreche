@@ -171,5 +171,5 @@ func (s *Service) postMessageToChannelID(ctx context.Context, channelID, body st
 	// xxx ensure channel exists
 	_, _, err := s.SlackClient.PostMessageContext(ctx, channelID, options...)
 	return err
-	
+
 }

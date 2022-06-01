@@ -84,7 +84,7 @@ func (s *Service) PROpened(ctx context.Context, ev *github.PullRequestEvent) err
 		pr   = ev.PullRequest
 	)
 
-	chname := fmt.Sprintf("pr-%s-%d", *repo.FullName, *ev.Number)
+	chname := ChannelName(repo, *ev.Number)
 	ch, err := s.SlackClient.CreateConversationContext(ctx, chname, false)
 	if err != nil {
 		return errors.Wrapf(err, "creating channel %s", chname)
@@ -124,8 +124,7 @@ func (s *Service) PROpened(ctx context.Context, ev *github.PullRequestEvent) err
 }
 
 func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEvent) error {
-	channelName := fmt.Sprintf("pr-%s-%d", *ev.Repo.FullName, *ev.PullRequest.Number)
-	channelID, err := s.GetChannelID(ctx, channelName)
+	channelID, err := s.GetChannelID(ctx, ChannelName(ev.Repo, *ev.PullRequest.Number))
 	if err != nil {
 		return errors.Wrapf(err, "channel not found for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.FullName)
 	}
@@ -134,8 +133,7 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 }
 
 func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestReviewCommentEvent) error {
-	channelName := fmt.Sprintf("pr-%s-%d", *ev.Repo.FullName, *ev.PullRequest.Number)
-	channelID, err := s.GetChannelID(ctx, channelName)
+	channelID, err := s.GetChannelID(ctx, ChannelName(ev.Repo, *ev.PullRequest.Number))
 	if err != nil {
 		// xxx
 	}
