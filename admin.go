@@ -20,6 +20,10 @@ func (s *Service) OnAdmin(httpServer *http.Server, ch chan struct{}) func(contex
 		}
 		switch cmd.Name {
 		case "shutdown":
+			// Run the following in a goroutine,
+			// so this handler can finish,
+			// which is required for the call to Shutdown to finish.
+			// (Deadlock otherwise.)
 			go func() {
 				httpServer.Shutdown(ctx)
 				close(ch)

@@ -124,31 +124,31 @@ func (s *Service) PROpened(ctx context.Context, ev *github.PullRequestEvent) err
 }
 
 func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEvent) error {
-	channelID, err := s.GetChannelID(ctx, ChannelName(ev.Repo, *ev.PullRequest.Number))
+	channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
 	if err != nil {
-		return errors.Wrapf(err, "channel not found for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.FullName)
+		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.Name)
 	}
-	err = s.postMessageToChannelID(ctx, channelID, *ev.Review.Body)
+	err = s.postMessageToChannelID(ctx, channel.ChannelID, *ev.Review.Body)
 	return errors.Wrap(err, "posting message")
 }
 
 func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestReviewCommentEvent) error {
-	channelID, err := s.GetChannelID(ctx, ChannelName(ev.Repo, *ev.PullRequest.Number))
+	channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
 	if err != nil {
-		// xxx
+		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.Name)
 	}
 
 	var postOptions []slack.MsgOption
 	if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
-		comment, err := s.Comments.ByCommentID(ctx, channelID, *ev.Comment.InReplyTo)
+		comment, err := s.Comments.ByCommentID(ctx, channel.ChannelID, *ev.Comment.InReplyTo)
 		if err != nil {
-			return errors.Wrapf(err, "finding comment in channel %s by commentID %d", channelID, *ev.Comment.InReplyTo)
+			return errors.Wrapf(err, "finding comment in channel %s by commentID %d", channel.ChannelID, *ev.Comment.InReplyTo)
 		}
 		postOptions = append(postOptions, slack.MsgOptionTS(comment.ThreadTimestamp))
 	}
 
 	// xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
-	err = s.postMessageToChannelID(ctx, channelID, *ev.Comment.Body, postOptions...)
+	err = s.postMessageToChannelID(ctx, channel.ChannelID, *ev.Comment.Body, postOptions...)
 	return errors.Wrap(err, "posting message")
 }
 
