@@ -2,6 +2,7 @@ package crocs
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/go-github/v44/github"
 	"github.com/slack-go/slack"
@@ -41,4 +42,9 @@ type User struct {
 	SlackID    string
 	SlackName  string
 	GithubName string
+}
+
+func ChannelName(repo *github.Repository, prnum int) string {
+	// xxx Sanitize strings - only a-z0-9 allowed, plus hyphen and underscore. N.B. no capitals!
+	return fmt.Sprintf("pr-%s-%s-%d", *repo.Owner.Login, *repo.Name, prnum)
 }
