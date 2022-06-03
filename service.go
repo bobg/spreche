@@ -22,6 +22,7 @@ type Service struct {
 }
 
 type ChannelStore interface {
+	Add(ctx context.Context, channelID string, repo *github.Repository, pr int) error
 	ByChannelID(context.Context, string) (*Channel, error)
 	ByRepoPR(context.Context, *github.Repository, int) (*Channel, error)
 }

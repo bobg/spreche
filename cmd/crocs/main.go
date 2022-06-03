@@ -82,7 +82,7 @@ func doServe(ctx context.Context, configPath string, _ []string) error {
 
 	slackClient := slack.New(c.SlackToken)
 
-	commentStore, userStore, closer, err := sqlite.Open(ctx, c.Database)
+	channelStore, commentStore, userStore, closer, err := sqlite.Open(ctx, c.Database)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -90,6 +90,7 @@ func doServe(ctx context.Context, configPath string, _ []string) error {
 
 	s := &crocs.Service{
 		AdminKey:           c.AdminKey,
+		Channels:           channelStore,
 		Comments:           commentStore,
 		GHClient:           ghClient,
 		GHSecret:           c.GithubSecret,
