@@ -4,12 +4,23 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/google/go-github/v44/github"
 	"github.com/pkg/errors"
 
 	"crocs"
 )
 
 const schema = `
+CREATE TABLE IF NOT EXISTS channels (
+  channel_id TEXT NOT NULL,
+  owner TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  pr INT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS channel_id_index ON channels (channel_id);
+CREATE UNIQUE INDEX IF NOT EXISTS owner_repo_pr_index ON channels (owner, repo, pr);
+
 CREATE TABLE IF NOT EXISTS comments (
   channel_id TEXT NOT NULL,
   thread_timestamp TEXT NOT NULL,
@@ -30,17 +41,49 @@ CREATE UNIQUE INDEX IF NOT EXISTS slack_name_index ON users (slack_name);
 CREATE UNIQUE INDEX IF NOT EXISTS github_name_index ON users (github_name);
 `
 
-func Open(ctx context.Context, conn string) (crocs.CommentStore, crocs.UserStore, func() error, error) {
+func Open(ctx context.Context, conn string) (crocs.ChannelStore, crocs.CommentStore, crocs.UserStore, func() error, error) {
 	db, err := sql.Open("sqlite3", conn)
 	if err != nil {
-		return nil, nil, nil, errors.Wrapf(err, "opening %s", conn)
+		return nil, nil, nil, nil, errors.Wrapf(err, "opening %s", conn)
 	}
 	_, err = db.ExecContext(ctx, schema)
 	if err != nil {
-		return nil, nil, nil, errors.Wrap(err, "instantiating schema") // xxx should close db
+		return nil, nil, nil, nil, errors.Wrap(err, "instantiating schema") // xxx should close db
 	}
 	closer := db.Close
-	return &commentStore{db: db}, &userStore{db: db}, closer, nil
+	return &channelStore{db: db}, &commentStore{db: db}, &userStore{db: db}, closer, nil
+}
+
+type channelStore struct {
+	db *sql.DB
+}
+
+var _ crocs.ChannelStore = &channelStore{}
+
+func (c *channelStore) Add(ctx context.Context, channelID string, repo *github.Repository, prnum int) error {
+	const q = `INSERT INTO channels (channel_id, owner, repo, pr) VALUES ($1, $2, $3, $4)`
+	_, err := c.db.ExecContext(ctx, q, channelID, *repo.Owner.Login, *repo.Name, prnum)
+	return err
+}
+
+func (c *channelStore) ByChannelID(ctx context.Context, channelID string) (*crocs.Channel, error) {
+	const q = `SELECT owner, repo, pr FROM channels WHERE channel_id = $1`
+	result := &crocs.Channel{
+		ChannelID: channelID,
+	}
+	err := c.db.QueryRowContext(ctx, q, channelID).Scan(&result.Owner, &result.Repo, &result.PR)
+	return result, err
+}
+
+func (c *channelStore) ByRepoPR(ctx context.Context, repo *github.Repository, prnum int) (*crocs.Channel, error) {
+	const q = `SELECT channel_id FROM channels WHERE owner = $1 AND repo = $2 AND pr = $3`
+	result := &crocs.Channel{
+		Owner: *repo.Owner.Login,
+		Repo:  *repo.Name,
+		PR:    prnum,
+	}
+	err := c.db.QueryRowContext(ctx, q, *repo.Owner.Login, *repo.Name, prnum).Scan(&result.ChannelID)
+	return result, err
 }
 
 type commentStore struct {

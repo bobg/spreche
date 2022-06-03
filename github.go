@@ -84,10 +84,15 @@ func (s *Service) PROpened(ctx context.Context, ev *github.PullRequestEvent) err
 		pr   = ev.PullRequest
 	)
 
-	chname := ChannelName(repo, *ev.Number)
+	chname := ChannelName(repo, *pr.Number)
 	ch, err := s.SlackClient.CreateConversationContext(ctx, chname, false)
 	if err != nil {
 		return errors.Wrapf(err, "creating channel %s", chname)
+	}
+
+	err = s.Channels.Add(ctx, ch.ID, repo, *pr.Number)
+	if err != nil {
+		return errors.Wrapf(err, "storing info for channel %s", chname)
 	}
 
 	topic := fmt.Sprintf("Discussion of %s: %s", *pr.URL, *pr.Title)
