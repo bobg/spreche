@@ -41,7 +41,7 @@ func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 		return s.OnURLVerification(w, ev)
 
 	case slackevents.CallbackEvent:
-		switch ev := ev.Data.(type) {
+		switch ev := ev.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
 			// xxx filter out bot messages (like the ones from this program!)
 			return s.OnMessage(ctx, ev)
@@ -81,18 +81,19 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 	// xxx filter out bot messages (like the ones from this program!)
 
 	user, err := s.Users.BySlackID(ctx, ev.User)
-	if err != nil {
+	if errors.Is(err, ErrNotFound) {
+		user = nil
+	} else if err != nil {
 		return errors.Wrapf(err, "getting info for userID %s", ev.User)
 	}
 
 	body := ev.Text // xxx convert Slack mrkdwn to GitHub Markdown
 
-	prComment := &github.PullRequestComment{
-		Body: &body,
-		User: &github.User{ // xxx ?
-			Login: &user.GithubName,
-		},
+	prComment := &github.PullRequestComment{Body: &body}
+	if user != nil {
+		prComment.User = &github.User{Login: &user.GithubName}
 	}
+
 	timestamp := ev.ThreadTimeStamp
 	if timestamp != "" {
 		// Threaded reply.

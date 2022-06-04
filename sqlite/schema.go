@@ -72,6 +72,9 @@ func (c *channelStore) ByChannelID(ctx context.Context, channelID string) (*croc
 		ChannelID: channelID,
 	}
 	err := c.db.QueryRowContext(ctx, q, channelID).Scan(&result.Owner, &result.Repo, &result.PR)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = crocs.ErrNotFound
+	}
 	return result, err
 }
 
@@ -83,6 +86,9 @@ func (c *channelStore) ByRepoPR(ctx context.Context, repo *github.Repository, pr
 		PR:    prnum,
 	}
 	err := c.db.QueryRowContext(ctx, q, *repo.Owner.Login, *repo.Name, prnum).Scan(&result.ChannelID)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = crocs.ErrNotFound
+	}
 	return result, err
 }
 
@@ -99,6 +105,9 @@ func (c *commentStore) ByCommentID(ctx context.Context, channelID string, commen
 		CommentID: commentID,
 	}
 	err := c.db.QueryRowContext(ctx, q, channelID, commentID).Scan(&result.ThreadTimestamp)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = crocs.ErrNotFound
+	}
 	return result, err
 }
 
@@ -109,6 +118,9 @@ func (c *commentStore) ByThreadTimestamp(ctx context.Context, channelID, timesta
 		ThreadTimestamp: timestamp,
 	}
 	err := c.db.QueryRowContext(ctx, q, channelID, timestamp).Scan(&result.CommentID)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = crocs.ErrNotFound
+	}
 	return result, err
 }
 
@@ -130,6 +142,9 @@ func (u *userStore) BySlackID(ctx context.Context, slackID string) (*crocs.User,
 		SlackID: slackID,
 	}
 	err := u.db.QueryRowContext(ctx, q, slackID).Scan(&result.SlackName, &result.GithubName)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = crocs.ErrNotFound
+	}
 	return result, err
 }
 
@@ -139,6 +154,9 @@ func (u *userStore) BySlackName(ctx context.Context, slackName string) (*crocs.U
 		SlackName: slackName,
 	}
 	err := u.db.QueryRowContext(ctx, q, slackName).Scan(&result.SlackID, &result.GithubName)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = crocs.ErrNotFound
+	}
 	return result, err
 }
 
@@ -148,5 +166,8 @@ func (u *userStore) ByGithubName(ctx context.Context, githubName string) (*crocs
 		GithubName: githubName,
 	}
 	err := u.db.QueryRowContext(ctx, q, githubName).Scan(&result.SlackID, &result.GithubName)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = crocs.ErrNotFound
+	}
 	return result, err
 }
