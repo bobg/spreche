@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/go-github/v44/github"
 	"github.com/slack-go/slack"
@@ -63,5 +64,10 @@ type User struct {
 
 func ChannelName(repo *github.Repository, prnum int) string {
 	// xxx Sanitize strings - only a-z0-9 allowed, plus hyphen and underscore. N.B. no capitals!
-	return fmt.Sprintf("pr-%s-%s-%d", *repo.Owner.Login, *repo.Name, prnum)
+
+	var (
+		owner = strings.ToLower(*repo.Owner.Login)
+		name  = strings.ToLower(*repo.Name)
+	)
+	return fmt.Sprintf("pr-%s-%s-%d", owner, name, prnum)
 }
