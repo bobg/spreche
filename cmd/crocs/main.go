@@ -13,6 +13,7 @@ import (
 
 	"github.com/bobg/mid"
 	"github.com/bobg/subcmd/v2"
+	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v44/github"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
@@ -48,16 +49,18 @@ func (maincmd) Subcmds() subcmd.Map {
 }
 
 type config struct {
-	AdminKey           string `yaml:"admin_key"`
-	Certfile           string
-	Database           string // xxx should have a "sqlite3:" prefix or something to select different backends
-	GithubSecret       string `yaml:"github_secret"`
-	GithubURL          string `yaml:"github_url"`
-	Keyfile            string
-	Listen             string
-	SlackClientSecret  string `yaml:"slack_client_secret"`
-	SlackSigningSecret string `yaml:"slack_signing_secret"`
-	SlackToken         string `yaml:"slack_token"`
+	AdminKey             string `yaml:"admin_key"`
+	Certfile             string
+	Database             string // xxx should have a "sqlite3:" prefix or something to select different backends
+	GithubClientSecret   string `yaml:"github_client_secret"`
+	GithubPrivateKeyFile string `yaml:"github_private_key_file"`
+	GithubSecret         string `yaml:"github_secret"`
+	GithubURL            string `yaml:"github_url"`
+	Keyfile              string
+	Listen               string
+	SlackClientSecret    string `yaml:"slack_client_secret"`
+	SlackSigningSecret   string `yaml:"slack_signing_secret"`
+	SlackToken           string `yaml:"slack_token"`
 }
 
 var defaultConfig = config{
@@ -67,6 +70,11 @@ var defaultConfig = config{
 }
 
 var portRegex = regexp.MustCompile(`:(\d+)$`)
+
+const (
+	ghAppID          = 207677 // https://github.com/settings/apps/spreche
+	ghInstallationID = 987    // xxx ?
+)
 
 func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) error {
 	f, err := os.Open(configPath)
@@ -81,7 +89,13 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 		return errors.Wrap(err, "parsing config file")
 	}
 
-	ghClient, err := github.NewEnterpriseClient(c.GithubURL, c.GithubURL, nil)
+	itr, err := ghinstallation.NewKeyFromFile(http.DefaultTransport, ghAppID, ghInstallationID, c.GithubPrivateKeyFile)
+	if err != nil {
+		return errors.Wrapf(err, "reading GitHub private key from %s", c.GithubPrivateKeyFile)
+	}
+	itr.BaseURL = c.GithubURL
+
+	ghClient, err := github.NewEnterpriseClient(c.GithubURL, c.GithubURL, &http.Client{Transport: itr})
 	if err != nil {
 		log.Fatalf("Creating GitHub client: %s", err)
 	}
