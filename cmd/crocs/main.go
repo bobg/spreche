@@ -73,7 +73,7 @@ var portRegex = regexp.MustCompile(`:(\d+)$`)
 
 const (
 	ghAppID          = 207677 // https://github.com/settings/apps/spreche
-	ghInstallationID = 987    // xxx ?
+	ghInstallationID = 17
 )
 
 func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) error {
