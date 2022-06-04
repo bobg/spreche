@@ -89,12 +89,15 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 
 	body := ev.Text // xxx convert Slack mrkdwn to GitHub Markdown
 
-	prComment := &github.PullRequestComment{Body: &body}
+	var ghuser *github.User
 	if user != nil {
-		prComment.User = &github.User{Login: &user.GithubName}
+		ghuser = &github.User{Login: &user.GithubName}
 	}
 
-	timestamp := ev.ThreadTimeStamp
+	var (
+		timestamp = ev.ThreadTimeStamp
+		commentID int64
+	)
 	if timestamp != "" {
 		// Threaded reply.
 
@@ -102,16 +105,28 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 		if err != nil {
 			return errors.Wrapf(err, "getting latest comment in thread %s", timestamp)
 		}
-		prComment.InReplyTo = &comment.CommentID
+		prComment, _, err := s.GHClient.PullRequests.CreateComment(ctx, channel.Owner, channel.Repo, channel.PR, &github.PullRequestComment{
+			Body:      &body,
+			User:      ghuser,
+			InReplyTo: &comment.CommentID,
+		})
+		if err != nil {
+			return errors.Wrap(err, "creating comment")
+		}
+		commentID = *prComment.ID
 	} else {
 		timestamp = ev.TimeStamp
-	}
-	prComment, _, err = s.GHClient.PullRequests.CreateComment(ctx, channel.Owner, channel.Repo, channel.PR, prComment)
-	if err != nil {
-		return errors.Wrap(err, "creating comment")
+		issueComment, _, err := s.GHClient.Issues.CreateComment(ctx, channel.Owner, channel.Repo, channel.PR, &github.IssueComment{
+			Body: &body,
+			User: ghuser,
+		})
+		if err != nil {
+			return errors.Wrap(err, "creating comment")
+		}
+		commentID = *issueComment.ID
 	}
 
-	return s.Comments.Update(ctx, channel.ChannelID, timestamp, *prComment.ID)
+	return s.Comments.Update(ctx, channel.ChannelID, timestamp, commentID)
 }
 
 func (s *Service) OnReactionAdded(ctx context.Context, ev *slackevents.ReactionAddedEvent) error {
@@ -126,7 +141,7 @@ func (s *Service) OnReactionRemoved(ctx context.Context, ev *slackevents.Reactio
 
 func (s *Service) postMessageToChannelID(ctx context.Context, channelID, body string, options ...slack.MsgOption) error {
 	// xxx ensure channel exists
+	options = append(options, slack.MsgOptionText(body, false))
 	_, _, err := s.SlackClient.PostMessageContext(ctx, channelID, options...)
 	return err
-
 }

@@ -49,24 +49,26 @@ func (maincmd) Subcmds() subcmd.Map {
 }
 
 type config struct {
-	AdminKey             string `yaml:"admin_key"`
-	Certfile             string
-	Database             string // xxx should have a "sqlite3:" prefix or something to select different backends
-	GithubClientSecret   string `yaml:"github_client_secret"`
+	AdminKey string `yaml:"admin_key"`
+	Certfile string
+	Database string // xxx should have a "sqlite3:" prefix or something to select different backends
+	// GithubClientSecret   string `yaml:"github_client_secret"`
 	GithubPrivateKeyFile string `yaml:"github_private_key_file"`
 	GithubSecret         string `yaml:"github_secret"`
-	GithubURL            string `yaml:"github_url"`
+	GithubAPIURL         string `yaml:"github_api_url"`    // "https://api.github.com/" or "https://HOST/api/v3/"
+	GithubUploadURL      string `yaml:"github_upload_url"` // "https://uploads.github.com/" or "https://HOST/api/uploads/"
 	Keyfile              string
 	Listen               string
-	SlackClientSecret    string `yaml:"slack_client_secret"`
-	SlackSigningSecret   string `yaml:"slack_signing_secret"`
-	SlackToken           string `yaml:"slack_token"`
+	// SlackClientSecret    string `yaml:"slack_client_secret"`
+	SlackSigningSecret string `yaml:"slack_signing_secret"`
+	SlackToken         string `yaml:"slack_token"`
 }
 
 var defaultConfig = config{
-	Database:  "crocs.db",
-	GithubURL: "http://github.com",
-	Listen:    ":3853",
+	Database:        "crocs.db",
+	GithubAPIURL:    "https://api.github.com/",
+	GithubUploadURL: "https://uploads.github.com/",
+	Listen:          ":3853",
 }
 
 var portRegex = regexp.MustCompile(`:(\d+)$`)
@@ -93,9 +95,9 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 	if err != nil {
 		return errors.Wrapf(err, "reading GitHub private key from %s", c.GithubPrivateKeyFile)
 	}
-	itr.BaseURL = c.GithubURL
+	itr.BaseURL = c.GithubAPIURL
 
-	ghClient, err := github.NewEnterpriseClient(c.GithubURL, c.GithubURL, &http.Client{Transport: itr})
+	ghClient, err := github.NewEnterpriseClient(c.GithubAPIURL, c.GithubUploadURL, &http.Client{Transport: itr})
 	if err != nil {
 		log.Fatalf("Creating GitHub client: %s", err)
 	}
@@ -109,13 +111,13 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 	defer closer()
 
 	s := &crocs.Service{
-		AdminKey:           c.AdminKey,
-		Channels:           channelStore,
-		Comments:           commentStore,
-		GHClient:           ghClient,
-		GHSecret:           c.GithubSecret,
-		SlackClient:        slackClient,
-		SlackClientSecret:  c.SlackClientSecret,
+		AdminKey:    c.AdminKey,
+		Channels:    channelStore,
+		Comments:    commentStore,
+		GHClient:    ghClient,
+		GHSecret:    c.GithubSecret,
+		SlackClient: slackClient,
+		// SlackClientSecret:  c.SlackClientSecret,
 		SlackSigningSecret: c.SlackSigningSecret,
 		Users:              userStore,
 	}
