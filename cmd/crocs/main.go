@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"regexp"
 
 	"github.com/bobg/mid"
 	"github.com/bobg/subcmd/v2"
@@ -34,6 +37,7 @@ func (maincmd) Subcmds() subcmd.Map {
 	return subcmd.Commands(
 		"serve", doServe, "run the crocs server", subcmd.Params(
 			"-config", subcmd.String, "config.yml", "path to config file",
+			"-ngrok", subcmd.Bool, false, "launch ngrok tunnel",
 		),
 		"admin", doAdmin, "send an admin command to a crocs server", subcmd.Params(
 			"-url", subcmd.String, "", "base URL of crocs server",
@@ -62,7 +66,9 @@ var defaultConfig = config{
 	Listen:    ":3853",
 }
 
-func doServe(ctx context.Context, configPath string, _ []string) error {
+var portRegex = regexp.MustCompile(`:(\d+)$`)
+
+func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) error {
 	f, err := os.Open(configPath)
 	if err != nil {
 		return errors.Wrap(err, "opening config file")
@@ -82,7 +88,7 @@ func doServe(ctx context.Context, configPath string, _ []string) error {
 
 	slackClient := slack.New(c.SlackToken)
 
-	commentStore, userStore, closer, err := sqlite.Open(ctx, c.Database)
+	channelStore, commentStore, userStore, closer, err := sqlite.Open(ctx, c.Database)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -90,6 +96,7 @@ func doServe(ctx context.Context, configPath string, _ []string) error {
 
 	s := &crocs.Service{
 		AdminKey:           c.AdminKey,
+		Channels:           channelStore,
 		Comments:           commentStore,
 		GHClient:           ghClient,
 		GHSecret:           c.GithubSecret,
@@ -112,6 +119,32 @@ func doServe(ctx context.Context, configPath string, _ []string) error {
 	mux.Handle("/admin", mid.JSON(s.OnAdmin(httpServer, ch)))
 
 	log.Printf("Listening on %s", httpServer.Addr)
+
+	if ngrok {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		m := portRegex.FindStringSubmatch(httpServer.Addr)
+		if len(m) == 0 {
+			return fmt.Errorf("could not parse addr %s", httpServer.Addr)
+		}
+		ngrokCmd := exec.CommandContext(ctx, "ngrok", "http", m[1])
+		err = ngrokCmd.Start()
+		if err != nil {
+			return errors.Wrap(err, "starting ngrok")
+		}
+		go func() {
+			err := ngrokCmd.Wait()
+			if err != nil {
+				log.Printf("Error running ngrok: %s", err)
+			}
+		}()
+
+		err = exec.CommandContext(ctx, "open", "http://localhost:4040").Run()
+		if err != nil {
+			return errors.Wrapf(err, "opening localhost:4040")
+		}
+	}
 
 	if c.Certfile != "" && c.Keyfile != "" {
 		err = httpServer.ListenAndServeTLS(c.Certfile, c.Keyfile)

@@ -2,6 +2,7 @@ package crocs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/go-github/v44/github"
@@ -16,8 +17,17 @@ type Service struct {
 	SlackClientSecret  string
 	SlackSigningSecret string
 
+	Channels ChannelStore
 	Comments CommentStore
 	Users    UserStore
+}
+
+var ErrNotFound = errors.New("not found")
+
+type ChannelStore interface {
+	Add(ctx context.Context, channelID string, repo *github.Repository, pr int) error
+	ByChannelID(context.Context, string) (*Channel, error)
+	ByRepoPR(context.Context, *github.Repository, int) (*Channel, error)
 }
 
 type CommentStore interface {
@@ -30,6 +40,13 @@ type UserStore interface {
 	BySlackID(context.Context, string) (*User, error)
 	BySlackName(context.Context, string) (*User, error)
 	ByGithubName(context.Context, string) (*User, error)
+}
+
+type Channel struct {
+	ChannelID string
+	Owner     string
+	Repo      string
+	PR        int
 }
 
 type Comment struct {
