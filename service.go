@@ -2,6 +2,7 @@ package crocs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/go-github/v44/github"
@@ -20,6 +21,8 @@ type Service struct {
 	Comments CommentStore
 	Users    UserStore
 }
+
+var ErrNotFound = errors.New("not found")
 
 type ChannelStore interface {
 	Add(ctx context.Context, channelID string, repo *github.Repository, pr int) error
