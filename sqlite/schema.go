@@ -51,8 +51,7 @@ func Open(ctx context.Context, conn string) (spreche.ChannelStore, spreche.Comme
 	if err != nil {
 		return nil, nil, nil, nil, errors.Wrap(err, "instantiating schema") // xxx should close db
 	}
-	closer := db.Close
-	return &channelStore{db: db}, &commentStore{db: db}, &userStore{db: db}, closer, nil
+	return &channelStore{db: db}, &commentStore{db: db}, &userStore{db: db}, db.Close, nil
 }
 
 type channelStore struct {
