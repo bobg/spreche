@@ -15,13 +15,12 @@ import (
 	"github.com/bobg/subcmd/v2"
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v44/github"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	"github.com/slack-go/slack"
 	"gopkg.in/yaml.v3"
 
-	"crocs"
-	"crocs/sqlite"
+	"spreche"
+	"spreche/sqlite"
 )
 
 func main() {
@@ -36,12 +35,12 @@ type maincmd struct{}
 
 func (maincmd) Subcmds() subcmd.Map {
 	return subcmd.Commands(
-		"serve", doServe, "run the crocs server", subcmd.Params(
+		"serve", doServe, "run the spreche server", subcmd.Params(
 			"-config", subcmd.String, "config.yml", "path to config file",
 			"-ngrok", subcmd.Bool, false, "launch ngrok tunnel",
 		),
-		"admin", doAdmin, "send an admin command to a crocs server", subcmd.Params(
-			"-url", subcmd.String, "", "base URL of crocs server",
+		"admin", doAdmin, "send an admin command to a spreche server", subcmd.Params(
+			"-url", subcmd.String, "", "base URL of spreche server",
 			"-key", subcmd.String, "", "admin key",
 			"command", subcmd.String, "", "command name",
 		),
@@ -65,7 +64,7 @@ type config struct {
 }
 
 var defaultConfig = config{
-	Database:        "crocs.db",
+	Database:        "spreche.db",
 	GithubAPIURL:    "https://api.github.com/",
 	GithubUploadURL: "https://uploads.github.com/",
 	Listen:          ":3853",
@@ -110,7 +109,7 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 	}
 	defer closer()
 
-	s := &crocs.Service{
+	s := &spreche.Service{
 		AdminKey:    c.AdminKey,
 		Channels:    channelStore,
 		Comments:    commentStore,
@@ -178,7 +177,7 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 }
 
 func doAdmin(ctx context.Context, url, key, command string, _ []string) error {
-	cmd := crocs.AdminCmd{
+	cmd := spreche.AdminCmd{
 		Key:  key,
 		Name: command,
 	}
@@ -194,7 +193,7 @@ func doAdmin(ctx context.Context, url, key, command string, _ []string) error {
 	var cl http.Client
 	resp, err := cl.Do(req)
 	if err != nil {
-		return errors.Wrap(err, "sending command to crocs service")
+		return errors.Wrap(err, "sending command to spreche service")
 	}
 	defer resp.Body.Close()
 	log.Printf("Response: %s", resp.Status)
