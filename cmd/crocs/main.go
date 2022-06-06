@@ -14,7 +14,6 @@ import (
 	"github.com/bobg/mid"
 	"github.com/bobg/subcmd/v2"
 	"github.com/google/go-github/v44/github"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	"github.com/slack-go/slack"
 	"gopkg.in/yaml.v3"
