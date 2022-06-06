@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"github.com/google/go-github/v44/github"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 
 	"crocs"
