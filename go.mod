@@ -1,4 +1,4 @@
-module crocs
+module spreche
 
 go 1.18
 
