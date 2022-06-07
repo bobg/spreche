@@ -138,10 +138,3 @@ func (s *Service) OnReactionRemoved(ctx context.Context, ev *slackevents.Reactio
 	// xxx
 	return nil
 }
-
-func (s *Service) postMessageToChannelID(ctx context.Context, channelID, body string, options ...slack.MsgOption) error {
-	// xxx ensure channel exists
-	options = append(options, slack.MsgOptionText(body, false))
-	_, _, err := s.SlackClient.PostMessageContext(ctx, channelID, options...)
-	return err
-}

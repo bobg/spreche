@@ -141,7 +141,7 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 	if ev.Review.Body != nil {
 		body += "\n\n" + *ev.Review.Body
 	}
-	err = s.postMessageToChannelID(ctx, channel.ChannelID, body)
+	err = s.postMessageToChannelID(ctx, channel.ChannelID, 0, body) // xxx
 	return errors.Wrap(err, "posting message")
 }
 
@@ -165,7 +165,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 	if ev.Comment.Body != nil {
 		body += "\n\n" + *ev.Comment.Body
 	}
-	err = s.postMessageToChannelID(ctx, channel.ChannelID, body, postOptions...)
+	err = s.postMessageToChannelID(ctx, channel.ChannelID, *ev.Comment.ID, body, postOptions...)
 	return errors.Wrap(err, "posting message")
 }
 
@@ -222,4 +222,14 @@ func (s *Service) PRReopened(ctx context.Context, ev *github.PullRequestEvent) e
 func (s *Service) PRUnassigned(ctx context.Context, ev *github.PullRequestEvent) error {
 	// xxx
 	return nil
+}
+
+func (s *Service) postMessageToChannelID(ctx context.Context, channelID string, commentID int64, body string, options ...slack.MsgOption) error {
+	// xxx ensure channel exists
+	options = append(options, slack.MsgOptionText(body, false))
+	_, timestamp, err := s.SlackClient.PostMessageContext(ctx, channelID, options...)
+	if err != nil {
+		return errors.Wrap(err, "posting message")
+	}
+	return s.Comments.Update(ctx, channelID, timestamp, commentID)
 }
