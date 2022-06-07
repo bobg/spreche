@@ -1,0 +1,30 @@
+{
+    "token": "EzsKMEDQ5ZRPZO8DxxrChZOr",
+    "team_id": "T03HEGQUBA7",
+    "api_app_id": "A03J9JK517X",
+    "event": {
+        "type": "message",
+        "subtype": "channel_topic",
+        "ts": "1654525046.343289",
+        "user": "U03J5TLS970",
+        "text": "set the channel topic: Discussion of <https://github.com/bobg/spreche/pull/6>: Title of pull request on branch 5",
+        "topic": "Discussion of <https://github.com/bobg/spreche/pull/6>: Title of pull request on branch 5",
+        "channel": "C03JBPHV2GM",
+        "event_ts": "1654525046.343289",
+        "channel_type": "channel"
+    },
+    "type": "event_callback",
+    "event_id": "Ev03JELPFPFU",
+    "event_time": 1654525046,
+    "authorizations": [
+        {
+            "enterprise_id": null,
+            "team_id": "T03HEGQUBA7",
+            "user_id": "U03J5TLS970",
+            "is_bot": true,
+            "is_enterprise_install": false
+        }
+    ],
+    "is_ext_shared_channel": false,
+    "event_context": "4-eyJldCI6Im1lc3NhZ2UiLCJ0aWQiOiJUMDNIRUdRVUJBNyIsImFpZCI6IkEwM0o5Sks1MTdYIiwiY2lkIjoiQzAzSkJQSFYyR00ifQ"
+}
