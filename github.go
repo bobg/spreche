@@ -132,25 +132,31 @@ func (s *Service) PROpened(ctx context.Context, ev *github.PullRequestEvent) err
 	return errors.Wrap(err, "posting new-channel message")
 }
 
+// note: reviews do not get placed in the comment store,
+// unlike review _comments_
 func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEvent) error {
+	if ev.Review.Body == nil || *ev.Review.Body == "" {
+		return nil
+	}
 	channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
 	if err != nil {
 		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.Name)
 	}
-	body := *ev.Review.HTMLURL
-	if ev.Review.Body != nil {
-		body += "\n\n" + *ev.Review.Body
-	}
-	err = s.postMessageToChannelID(ctx, channel.ChannelID, 0, body) // xxx
+
+	// xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
+	body := *ev.Review.HTMLURL + "\n\n" + *ev.Review.Body
+	err = s.postMessageToChannelID(ctx, channel.ChannelID, 0, body)
 	return errors.Wrap(err, "posting message")
 }
 
 func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestReviewCommentEvent) error {
+	if ev.Comment.Body == nil || *ev.Comment.Body == "" {
+		return nil
+	}
 	channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
 	if err != nil {
 		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.Name)
 	}
-
 	var postOptions []slack.MsgOption
 	if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
 		comment, err := s.Comments.ByCommentID(ctx, channel.ChannelID, *ev.Comment.InReplyTo)
@@ -161,10 +167,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 	}
 
 	// xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
-	body := *ev.Comment.HTMLURL
-	if ev.Comment.Body != nil {
-		body += "\n\n" + *ev.Comment.Body
-	}
+	body := *ev.Comment.HTMLURL + "\n\n" + *ev.Comment.Body
 	err = s.postMessageToChannelID(ctx, channel.ChannelID, *ev.Comment.ID, body, postOptions...)
 	return errors.Wrap(err, "posting message")
 }
@@ -231,5 +234,9 @@ func (s *Service) postMessageToChannelID(ctx context.Context, channelID string, 
 	if err != nil {
 		return errors.Wrap(err, "posting message")
 	}
-	return s.Comments.Update(ctx, channelID, timestamp, commentID)
+	if commentID == 0 {
+		return nil
+	}
+	err = s.Comments.Update(ctx, channelID, timestamp, commentID)
+	return errors.Wrap(err, "updating comment store")
 }
