@@ -48,19 +48,17 @@ func (maincmd) Subcmds() subcmd.Map {
 }
 
 type config struct {
-	AdminKey string `yaml:"admin_key"`
-	Certfile string
-	Database string // xxx should have a "sqlite3:" prefix or something to select different backends
-	// GithubClientSecret   string `yaml:"github_client_secret"`
+	AdminKey             string `yaml:"admin_key"`
+	Certfile             string
+	Database             string // xxx should have a "sqlite3:" prefix or something to select different backends
 	GithubPrivateKeyFile string `yaml:"github_private_key_file"`
 	GithubSecret         string `yaml:"github_secret"`
 	GithubAPIURL         string `yaml:"github_api_url"`    // "https://api.github.com/" or "https://HOST/api/v3/"
 	GithubUploadURL      string `yaml:"github_upload_url"` // "https://uploads.github.com/" or "https://HOST/api/uploads/"
 	Keyfile              string
 	Listen               string
-	// SlackClientSecret    string `yaml:"slack_client_secret"`
-	SlackSigningSecret string `yaml:"slack_signing_secret"`
-	SlackToken         string `yaml:"slack_token"`
+	SlackSigningSecret   string `yaml:"slack_signing_secret"`
+	SlackToken           string `yaml:"slack_token"`
 }
 
 var defaultConfig = config{
@@ -110,13 +108,12 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 	defer closer()
 
 	s := &spreche.Service{
-		AdminKey:    c.AdminKey,
-		Channels:    channelStore,
-		Comments:    commentStore,
-		GHClient:    ghClient,
-		GHSecret:    c.GithubSecret,
-		SlackClient: slackClient,
-		// SlackClientSecret:  c.SlackClientSecret,
+		AdminKey:           c.AdminKey,
+		Channels:           channelStore,
+		Comments:           commentStore,
+		GHClient:           ghClient,
+		GHSecret:           c.GithubSecret,
+		SlackClient:        slackClient,
 		SlackSigningSecret: c.SlackSigningSecret,
 		Users:              userStore,
 	}
