@@ -1,0 +1,61 @@
+{
+    "token": "[token]",
+    "team_id": "[team_id]",
+    "api_app_id": "[app_id]",
+    "event": {
+        "bot_id": "B03J9JVFECD",
+        "type": "message",
+        "text": "Description of pull request on branch 5.",
+        "user": "[user_id]",
+        "ts": "1654525046.487129",
+        "app_id": "[app_id]",
+        "team": "[team_id]",
+        "bot_profile": {
+            "id": "B03J9JVFECD",
+            "deleted": false,
+            "name": "Spreche",
+            "updated": 1654490121,
+            "app_id": "[app_id]",
+            "icons": {
+                "image_36": "https://a.slack-edge.com/80588/img/plugins/app/bot_36.png",
+                "image_48": "https://a.slack-edge.com/80588/img/plugins/app/bot_48.png",
+                "image_72": "https://a.slack-edge.com/80588/img/plugins/app/service_72.png"
+            },
+            "team_id": "[team_id]"
+        },
+        "blocks": [
+            {
+                "type": "rich_text",
+                "block_id": "xluai",
+                "elements": [
+                    {
+                        "type": "rich_text_section",
+                        "elements": [
+                            {
+                                "type": "text",
+                                "text": "Description of pull request on branch 5."
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "channel": "C03JBPHV2GM",
+        "event_ts": "1654525046.487129",
+        "channel_type": "channel"
+    },
+    "type": "event_callback",
+    "event_id": "Ev03JH2SEJLC",
+    "event_time": 1654525046,
+    "authorizations": [
+        {
+            "enterprise_id": null,
+            "team_id": "[team_id]",
+            "user_id": "[user_id]",
+            "is_bot": true,
+            "is_enterprise_install": false
+        }
+    ],
+    "is_ext_shared_channel": false,
+    "event_context": "4-eyJldCI6Im1lc3NhZ2UiLCJ0aWQiOiJUMDNIRUdRVUJBNyIsImFpZCI6IkEwM0o5Sks1MTdYIiwiY2lkIjoiQzAzSkJQSFYyR00ifQ"
+}

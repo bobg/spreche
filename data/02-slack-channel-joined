@@ -1,0 +1,29 @@
+{
+    "token": "[token]",
+    "team_id": "[team_id]",
+    "api_app_id": "[app_id]",
+    "event": {
+        "type": "message",
+        "subtype": "channel_join",
+        "ts": "1654525046.038219",
+        "user": "[user_id]",
+        "text": "<@[user_id]> has joined the channel",
+        "channel": "C03JBPHV2GM",
+        "event_ts": "1654525046.038219",
+        "channel_type": "channel"
+    },
+    "type": "event_callback",
+    "event_id": "Ev03J82XM2R4",
+    "event_time": 1654525046,
+    "authorizations": [
+        {
+            "enterprise_id": null,
+            "team_id": "[team_id]",
+            "user_id": "[user_id]",
+            "is_bot": true,
+            "is_enterprise_install": false
+        }
+    ],
+    "is_ext_shared_channel": false,
+    "event_context": "4-eyJldCI6Im1lc3NhZ2UiLCJ0aWQiOiJUMDNIRUdRVUJBNyIsImFpZCI6IkEwM0o5Sks1MTdYIiwiY2lkIjoiQzAzSkJQSFYyR00ifQ"
+}

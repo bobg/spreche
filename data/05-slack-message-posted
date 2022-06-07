@@ -1,0 +1,47 @@
+{
+    "token": "[token]",
+    "team_id": "[team_id]",
+    "api_app_id": "[app_id]",
+    "event": {
+        "client_msg_id": "e27a900f-822b-4da5-99e0-b956287a915c",
+        "type": "message",
+        "text": "This looks interesting",
+        "user": "U03HEHAPHRQ",
+        "ts": "1654525561.206099",
+        "team": "[team_id]",
+        "blocks": [
+            {
+                "type": "rich_text",
+                "block_id": "kDa",
+                "elements": [
+                    {
+                        "type": "rich_text_section",
+                        "elements": [
+                            {
+                                "type": "text",
+                                "text": "This looks interesting"
+                            }
+                        ]
+                    }
+                ]
+            }
+        ],
+        "channel": "C03JBPHV2GM",
+        "event_ts": "1654525561.206099",
+        "channel_type": "channel"
+    },
+    "type": "event_callback",
+    "event_id": "Ev03J84EC970",
+    "event_time": 1654525561,
+    "authorizations": [
+        {
+            "enterprise_id": null,
+            "team_id": "[team_id]",
+            "user_id": "[user_id]",
+            "is_bot": true,
+            "is_enterprise_install": false
+        }
+    ],
+    "is_ext_shared_channel": false,
+    "event_context": "4-eyJldCI6Im1lc3NhZ2UiLCJ0aWQiOiJUMDNIRUdRVUJBNyIsImFpZCI6IkEwM0o5Sks1MTdYIiwiY2lkIjoiQzAzSkJQSFYyR00ifQ"
+}
