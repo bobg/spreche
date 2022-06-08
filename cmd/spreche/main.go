@@ -173,10 +173,11 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 	return nil
 }
 
-func doAdmin(ctx context.Context, url, key, command string, _ []string) error {
+func doAdmin(ctx context.Context, url, key, command string, args []string) error {
 	cmd := spreche.AdminCmd{
 		Key:  key,
 		Name: command,
+		Args: args,
 	}
 	enc, err := json.Marshal(cmd)
 	if err != nil {

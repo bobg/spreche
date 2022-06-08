@@ -75,6 +75,10 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 	if ev.BotID != "" {
 		return nil
 	}
+	switch ev.SubType {
+	case "channel_join", "channel_topic":
+		return nil
+	}
 
 	channel, err := s.Channels.ByChannelID(ctx, ev.Channel)
 	if err != nil {
