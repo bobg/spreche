@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -193,5 +194,8 @@ func doAdmin(ctx context.Context, url, key string, args []string) error {
 	}
 	defer resp.Body.Close()
 	log.Printf("Response: %s", resp.Status)
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		io.Copy(os.Stdout, resp.Body)
+	}
 	return nil
 }
