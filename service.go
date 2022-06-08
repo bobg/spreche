@@ -38,7 +38,6 @@ type CommentStore interface {
 
 type UserStore interface {
 	BySlackID(context.Context, string) (*User, error)
-	BySlackName(context.Context, string) (*User, error)
 	ByGithubName(context.Context, string) (*User, error)
 	Add(context.Context, *User) error
 }
@@ -58,7 +57,6 @@ type Comment struct {
 
 type User struct {
 	SlackID    string
-	SlackName  string
 	GithubName string
 }
 

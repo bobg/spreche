@@ -33,12 +33,10 @@ CREATE INDEX IF NOT EXISTS channel_comment_index ON comments (channel_id, commen
 
 CREATE TABLE IF NOT EXISTS users (
   slack_id TEXT NOT NULL,
-  slack_name TEXT NOT NULL,
   github_name TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS slack_id_index ON users (slack_id);
-CREATE UNIQUE INDEX IF NOT EXISTS slack_name_index ON users (slack_name);
 CREATE UNIQUE INDEX IF NOT EXISTS github_name_index ON users (github_name);
 `
 
@@ -137,23 +135,11 @@ type userStore struct {
 var _ spreche.UserStore = &userStore{}
 
 func (u *userStore) BySlackID(ctx context.Context, slackID string) (*spreche.User, error) {
-	const q = `SELECT slack_name, github_name FROM users WHERE slack_id = $1`
+	const q = `SELECT github_name FROM users WHERE slack_id = $1`
 	result := &spreche.User{
 		SlackID: slackID,
 	}
-	err := u.db.QueryRowContext(ctx, q, slackID).Scan(&result.SlackName, &result.GithubName)
-	if errors.Is(err, sql.ErrNoRows) {
-		err = spreche.ErrNotFound
-	}
-	return result, err
-}
-
-func (u *userStore) BySlackName(ctx context.Context, slackName string) (*spreche.User, error) {
-	const q = `SELECT slack_id, github_name FROM users WHERE slack_name = $1`
-	result := &spreche.User{
-		SlackName: slackName,
-	}
-	err := u.db.QueryRowContext(ctx, q, slackName).Scan(&result.SlackID, &result.GithubName)
+	err := u.db.QueryRowContext(ctx, q, slackID).Scan(&result.GithubName)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = spreche.ErrNotFound
 	}
@@ -161,13 +147,19 @@ func (u *userStore) BySlackName(ctx context.Context, slackName string) (*spreche
 }
 
 func (u *userStore) ByGithubName(ctx context.Context, githubName string) (*spreche.User, error) {
-	const q = `SELECT slack_id, slack_name FROM users WHERE github_name = $1`
+	const q = `SELECT slack_id FROM users WHERE github_name = $1`
 	result := &spreche.User{
 		GithubName: githubName,
 	}
-	err := u.db.QueryRowContext(ctx, q, githubName).Scan(&result.SlackID, &result.GithubName)
+	err := u.db.QueryRowContext(ctx, q, githubName).Scan(&result.SlackID)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = spreche.ErrNotFound
 	}
 	return result, err
+}
+
+func (u *userStore) Add(ctx context.Context, user *spreche.User) error {
+	const q = `INSERT INTO users (slack_id, github_name) VALUES ($1, $2)`
+	_, err := u.db.ExecContext(ctx, q, user.SlackID, user.GithubName)
+	return err
 }

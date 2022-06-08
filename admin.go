@@ -10,7 +10,6 @@ import (
 
 type AdminCmd struct {
 	Key  string   `json:"key"`
-	Name string   `json:"name"`
 	Args []string `json:"args"`
 }
 
@@ -25,7 +24,12 @@ func (s *Service) OnAdmin(httpServer *http.Server, ch chan struct{}) func(contex
 		if cmd.Key != s.AdminKey {
 			return mid.CodeErr{C: http.StatusUnauthorized}
 		}
-		return subcmd.Run(ctx, admincmd{s: s, httpServer: httpServer, ch: ch}, cmd.Args)
+		a := admincmd{
+			s:          s,
+			httpServer: httpServer,
+			ch:         ch,
+		}
+		return subcmd.Run(ctx, a, cmd.Args)
 	}
 }
 
@@ -46,26 +50,4 @@ func (a admincmd) doShutdown(ctx context.Context, _ []string) error {
 		close(a.ch)
 	}()
 	return nil
-}
-
-func (a admincmd) doUser(ctx context.Context, args []string) error {
-	return subcmd.Run(ctx, usercmd{s: a.s}, args)
-}
-
-type usercmd struct{ s *Service }
-
-func (u usercmd) Subcmds() subcmd.Map {
-	return subcmd.Commands(
-		"add", u.doAdd, "add a user", subcmd.Params(
-			"-slackid", subcmd.String, "", "Slack user ID",
-			"-slackname", subcmd.String, "", "Slack name",
-			"-githublogin", subcmd.String, "", "GitHub login",
-		),
-		"del", u.doDel, "remove a user", subcmd.Params(
-			"-slackid", subcmd.String, "", "Slack user ID",
-			"-slackname", subcmd.String, "", "Slack name",
-			"-githublogin", subcmd.String, "", "GitHub login",
-		),
-		"list", u.doList, "list users", nil,
-	)
 }

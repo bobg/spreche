@@ -42,7 +42,6 @@ func (maincmd) Subcmds() subcmd.Map {
 		"admin", doAdmin, "send an admin command to a spreche server", subcmd.Params(
 			"-url", subcmd.String, "", "base URL of spreche server",
 			"-key", subcmd.String, "", "admin key",
-			"command", subcmd.String, "", "command name",
 		),
 	)
 }
@@ -173,10 +172,9 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 	return nil
 }
 
-func doAdmin(ctx context.Context, url, key, command string, args []string) error {
+func doAdmin(ctx context.Context, url, key string, args []string) error {
 	cmd := spreche.AdminCmd{
 		Key:  key,
-		Name: command,
 		Args: args,
 	}
 	enc, err := json.Marshal(cmd)
