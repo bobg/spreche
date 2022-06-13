@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/bobg/mid"
-	"github.com/google/go-github/v44/github"
+	"github.com/google/go-github/v45/github"
 	"github.com/pkg/errors"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -75,6 +75,10 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 	if ev.BotID != "" {
 		return nil
 	}
+	switch ev.SubType {
+	case "channel_join", "channel_topic":
+		return nil
+	}
 
 	channel, err := s.Channels.ByChannelID(ctx, ev.Channel)
 	if err != nil {
@@ -97,39 +101,23 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 		ghuser = &github.User{Login: &user.GithubName}
 	}
 
-	var (
-		timestamp = ev.ThreadTimeStamp
-		commentID int64
-	)
-	if timestamp != "" {
-		// Threaded reply.
-
-		comment, err := s.Comments.ByThreadTimestamp(ctx, channel.ChannelID, timestamp)
+	if ev.ThreadTimeStamp != "" {
+		comment, err := s.Comments.ByThreadTimestamp(ctx, channel.ChannelID, ev.ThreadTimeStamp)
 		if err != nil {
-			return errors.Wrapf(err, "getting latest comment in thread %s", timestamp)
+			return errors.Wrapf(err, "getting latest comment in thread %s", ev.ThreadTimeStamp)
 		}
-		prComment, _, err := s.GHClient.PullRequests.CreateComment(ctx, channel.Owner, channel.Repo, channel.PR, &github.PullRequestComment{
-			Body:      &body,
-			User:      ghuser,
-			InReplyTo: &comment.CommentID,
-		})
-		if err != nil {
-			return errors.Wrap(err, "creating comment")
-		}
-		commentID = *prComment.ID
-	} else {
-		timestamp = ev.TimeStamp
-		issueComment, _, err := s.GHClient.Issues.CreateComment(ctx, channel.Owner, channel.Repo, channel.PR, &github.IssueComment{
-			Body: &body,
-			User: ghuser,
-		})
-		if err != nil {
-			return errors.Wrap(err, "creating comment")
-		}
-		commentID = *issueComment.ID
+		_, _, err = s.GHClient.PullRequests.CreateCommentInReplyTo(ctx, channel.Owner, channel.Repo, channel.PR, body, comment.CommentID)
+		return errors.Wrap(err, "creating comment")
 	}
 
-	return s.Comments.Update(ctx, channel.ChannelID, timestamp, commentID)
+	issueComment, _, err := s.GHClient.Issues.CreateComment(ctx, channel.Owner, channel.Repo, channel.PR, &github.IssueComment{
+		Body: &body,
+		User: ghuser,
+	})
+	if err != nil {
+		return errors.Wrap(err, "creating comment")
+	}
+	return s.Comments.Add(ctx, channel.ChannelID, ev.TimeStamp, *issueComment.ID)
 }
 
 func (s *Service) OnReactionAdded(ctx context.Context, ev *slackevents.ReactionAddedEvent) error {

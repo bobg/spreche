@@ -6,7 +6,7 @@ require (
 	github.com/bobg/mid v1.7.0
 	github.com/bobg/subcmd/v2 v2.0.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.0.4
-	github.com/google/go-github/v44 v44.1.0
+	github.com/google/go-github/v45 v45.1.0
 	github.com/mattn/go-sqlite3 v1.14.12
 	github.com/pkg/errors v0.9.1
 	github.com/slack-go/slack v0.10.3
