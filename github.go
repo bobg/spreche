@@ -150,7 +150,7 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 			"",
 			slack.NewTextBlockObject(
 				"mrkdwn",
-				fmt.Sprintf("<Review|%s> by <%s|%s>", *ev.Review.HTMLURL, *ev.Review.User.Name, *ev.Review.User.HTMLURL),
+				fmt.Sprintf("<Review|%s> by <%s|%s>", *ev.Review.HTMLURL, *ev.Review.User.Login, *ev.Review.User.HTMLURL),
 				false,
 				false,
 			),
@@ -168,14 +168,14 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 	}
 
 	options := []slack.MsgOption{slack.MsgOptionBlocks(blocks...)}
-	u, err := s.Users.ByGithubName(ctx, *ev.Review.User.Name)
+	u, err := s.Users.ByGithubName(ctx, *ev.Review.User.Login)
 	switch {
 	case errors.Is(err, ErrNotFound):
 		// do nothing
 	case err != nil:
-		return errors.Wrapf(err, "looking up user %s", *ev.Review.User.Name)
+		return errors.Wrapf(err, "looking up user %s", *ev.Review.User.Login)
 	default:
-		options = append(options, slack.MsgOptionUser(u.SlackID)) // xxx also slack.MsgOptionAsUser(true)?
+		options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
 	}
 	_, _, err = s.SlackClient.PostMessageContext(ctx, channel.ChannelID, options...)
 	return errors.Wrap(err, "posting message")
@@ -212,7 +212,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 			"",
 			slack.NewTextBlockObject(
 				"mrkdwn",
-				fmt.Sprintf("<%s|Review comment> by <%s|%s>", *ev.Comment.HTMLURL, *ev.Comment.User.HTMLURL, *ev.Comment.User.Name),
+				fmt.Sprintf("<%s|Review comment> by <%s|%s>", *ev.Comment.HTMLURL, *ev.Comment.User.HTMLURL, *ev.Comment.User.Login),
 				false,
 				false,
 			),
@@ -230,14 +230,14 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 	}
 
 	options = append(options, slack.MsgOptionBlocks(blocks...))
-	u, err := s.Users.ByGithubName(ctx, *ev.Comment.User.Name)
+	u, err := s.Users.ByGithubName(ctx, *ev.Comment.User.Login)
 	switch {
 	case errors.Is(err, ErrNotFound):
 		// do nothing
 	case err != nil:
-		return errors.Wrapf(err, "looking up user %s", *ev.Comment.User.Name)
+		return errors.Wrapf(err, "looking up user %s", *ev.Comment.User.Login)
 	default:
-		options = append(options, slack.MsgOptionUser(u.SlackID)) // xxx also slack.MsgOptionAsUser(true)?
+		options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
 	}
 
 	_, timestamp, err := s.SlackClient.PostMessageContext(ctx, channel.ChannelID, options...)
