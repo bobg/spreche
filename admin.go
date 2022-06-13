@@ -2,15 +2,21 @@ package spreche
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 
 	"github.com/bobg/mid"
+	"github.com/bobg/subcmd/v2"
 )
 
 type AdminCmd struct {
-	Key  string `json:"key"`
-	Name string `json:"name"`
+	Key  string   `json:"key"`
+	Args []string `json:"args"`
+}
+
+type admincmd struct {
+	s          *Service
+	httpServer *http.Server
+	ch         chan struct{}
 }
 
 func (s *Service) OnAdmin(httpServer *http.Server, ch chan struct{}) func(context.Context, AdminCmd) error {
@@ -18,22 +24,30 @@ func (s *Service) OnAdmin(httpServer *http.Server, ch chan struct{}) func(contex
 		if cmd.Key != s.AdminKey {
 			return mid.CodeErr{C: http.StatusUnauthorized}
 		}
-		switch cmd.Name {
-		case "shutdown":
-			// Run the following in a goroutine,
-			// so this handler can finish,
-			// which is required for the call to Shutdown to finish.
-			// (Deadlock otherwise.)
-			go func() {
-				httpServer.Shutdown(ctx)
-				close(ch)
-			}()
-			return nil
+		a := admincmd{
+			s:          s,
+			httpServer: httpServer,
+			ch:         ch,
 		}
-
-		return mid.CodeErr{
-			C:   http.StatusBadRequest,
-			Err: fmt.Errorf("unknown admin command %s", cmd.Name),
-		}
+		return subcmd.Run(ctx, a, cmd.Args)
 	}
+}
+
+func (a admincmd) Subcmds() subcmd.Map {
+	return subcmd.Commands(
+		"shutdown", a.doShutdown, "shut down", nil,
+		"user", a.doUser, "manage users", nil,
+	)
+}
+
+func (a admincmd) doShutdown(ctx context.Context, _ []string) error {
+	// Run the following in a goroutine,
+	// so this (presumably running in an http server handler) can finish,
+	// which is required for the call to Shutdown to finish.
+	// Deadlock otherwise.
+	go func() {
+		a.httpServer.Shutdown(ctx)
+		close(a.ch)
+	}()
+	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -14,7 +15,7 @@ import (
 	"github.com/bobg/mid"
 	"github.com/bobg/subcmd/v2"
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	"github.com/google/go-github/v44/github"
+	"github.com/google/go-github/v45/github"
 	"github.com/pkg/errors"
 	"github.com/slack-go/slack"
 	"gopkg.in/yaml.v3"
@@ -42,7 +43,6 @@ func (maincmd) Subcmds() subcmd.Map {
 		"admin", doAdmin, "send an admin command to a spreche server", subcmd.Params(
 			"-url", subcmd.String, "", "base URL of spreche server",
 			"-key", subcmd.String, "", "admin key",
-			"command", subcmd.String, "", "command name",
 		),
 	)
 }
@@ -173,10 +173,10 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 	return nil
 }
 
-func doAdmin(ctx context.Context, url, key, command string, _ []string) error {
+func doAdmin(ctx context.Context, url, key string, args []string) error {
 	cmd := spreche.AdminCmd{
 		Key:  key,
-		Name: command,
+		Args: args,
 	}
 	enc, err := json.Marshal(cmd)
 	if err != nil {
@@ -194,5 +194,8 @@ func doAdmin(ctx context.Context, url, key, command string, _ []string) error {
 	}
 	defer resp.Body.Close()
 	log.Printf("Response: %s", resp.Status)
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		io.Copy(os.Stdout, resp.Body)
+	}
 	return nil
 }

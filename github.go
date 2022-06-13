@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/google/go-github/v44/github"
+	"github.com/google/go-github/v45/github"
 	"github.com/pkg/errors"
 	"github.com/slack-go/slack"
 )
@@ -143,9 +143,10 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.Name)
 	}
 
+	// xxx ensure channel exists
 	// xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
 	body := *ev.Review.HTMLURL + "\n\n" + *ev.Review.Body
-	err = s.postMessageToChannelID(ctx, channel.ChannelID, 0, body)
+	_, _, err = s.SlackClient.PostMessageContext(ctx, channel.ChannelID, slack.MsgOptionText(body, false))
 	return errors.Wrap(err, "posting message")
 }
 
@@ -153,23 +154,38 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 	if ev.Comment.Body == nil || *ev.Comment.Body == "" {
 		return nil
 	}
+	if ev.Comment.User != nil && ev.Comment.User.Type != nil && *ev.Comment.User.Type == "Bot" {
+		return nil
+	}
 	channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
 	if err != nil {
 		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.Name)
 	}
-	var postOptions []slack.MsgOption
+	var (
+		options []slack.MsgOption
+		isReply bool
+	)
 	if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
+		isReply = true
 		comment, err := s.Comments.ByCommentID(ctx, channel.ChannelID, *ev.Comment.InReplyTo)
 		if err != nil {
 			return errors.Wrapf(err, "finding comment in channel %s by commentID %d", channel.ChannelID, *ev.Comment.InReplyTo)
 		}
-		postOptions = append(postOptions, slack.MsgOptionTS(comment.ThreadTimestamp))
+		options = append(options, slack.MsgOptionTS(comment.ThreadTimestamp))
 	}
 
+	// xxx ensure channel exists
 	// xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
 	body := *ev.Comment.HTMLURL + "\n\n" + *ev.Comment.Body
-	err = s.postMessageToChannelID(ctx, channel.ChannelID, *ev.Comment.ID, body, postOptions...)
-	return errors.Wrap(err, "posting message")
+	options = append(options, slack.MsgOptionText(body, false))
+	_, timestamp, err := s.SlackClient.PostMessageContext(ctx, channel.ChannelID, options...)
+	if err != nil {
+		return errors.Wrap(err, "posting message")
+	}
+	if isReply {
+		return nil
+	}
+	return s.Comments.Add(ctx, channel.ChannelID, timestamp, *ev.Comment.ID)
 }
 
 func (s *Service) OnPRReviewThread(ctx context.Context, ev *github.PullRequestReviewThreadEvent) error {
@@ -225,18 +241,4 @@ func (s *Service) PRReopened(ctx context.Context, ev *github.PullRequestEvent) e
 func (s *Service) PRUnassigned(ctx context.Context, ev *github.PullRequestEvent) error {
 	// xxx
 	return nil
-}
-
-func (s *Service) postMessageToChannelID(ctx context.Context, channelID string, commentID int64, body string, options ...slack.MsgOption) error {
-	// xxx ensure channel exists
-	options = append(options, slack.MsgOptionText(body, false))
-	_, timestamp, err := s.SlackClient.PostMessageContext(ctx, channelID, options...)
-	if err != nil {
-		return errors.Wrap(err, "posting message")
-	}
-	if commentID == 0 {
-		return nil
-	}
-	err = s.Comments.Update(ctx, channelID, timestamp, commentID)
-	return errors.Wrap(err, "updating comment store")
 }
