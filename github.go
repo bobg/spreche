@@ -95,7 +95,7 @@ func (s *Service) PROpened(ctx context.Context, ev *github.PullRequestEvent) err
 		return errors.Wrapf(err, "storing info for channel %s", chname)
 	}
 
-	topic := fmt.Sprintf("Discussion of %s: %s", *pr.HTMLURL, *pr.Title)
+	topic := fmt.Sprintf("Discussion of %s: %s by %s", *pr.HTMLURL, *pr.Title, *pr.User.HTMLURL)
 	_, err = s.SlackClient.SetTopicOfConversationContext(ctx, ch.ID, topic)
 	if err != nil {
 		return errors.Wrapf(err, "setting topic of channel %s", chname)
@@ -144,9 +144,40 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 	}
 
 	// xxx ensure channel exists
-	// xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
-	body := *ev.Review.HTMLURL + "\n\n" + *ev.Review.Body
-	_, _, err = s.SlackClient.PostMessageContext(ctx, channel.ChannelID, slack.MsgOptionText(body, false))
+
+	blocks := []slack.Block{
+		slack.NewContextBlock(
+			"",
+			slack.NewTextBlockObject(
+				"mrkdwn",
+				fmt.Sprintf("<Review|%s> by <%s|%s>", *ev.Review.HTMLURL, *ev.Review.User.Name, *ev.Review.User.HTMLURL),
+				false,
+				false,
+			),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject(
+				"plain_text", // xxx convert GH to Slack markdown
+				*ev.Review.Body,
+				false,
+				false,
+			),
+			nil,
+			nil,
+		),
+	}
+
+	options := []slack.MsgOption{slack.MsgOptionBlocks(blocks...)}
+	u, err := s.Users.ByGithubName(ctx, *ev.Review.User.Name)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		// do nothing
+	case err != nil:
+		return errors.Wrapf(err, "looking up user %s", *ev.Review.User.Name)
+	default:
+		options = append(options, slack.MsgOptionUser(u.SlackID)) // xxx also slack.MsgOptionAsUser(true)?
+	}
+	_, _, err = s.SlackClient.PostMessageContext(ctx, channel.ChannelID, options...)
 	return errors.Wrap(err, "posting message")
 }
 
@@ -175,9 +206,40 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 	}
 
 	// xxx ensure channel exists
-	// xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
-	body := *ev.Comment.HTMLURL + "\n\n" + *ev.Comment.Body
-	options = append(options, slack.MsgOptionText(body, false))
+
+	blocks := []slack.Block{
+		slack.NewContextBlock(
+			"",
+			slack.NewTextBlockObject(
+				"mrkdwn",
+				fmt.Sprintf("<%s|Review comment> by <%s|%s>", *ev.Comment.HTMLURL, *ev.Comment.User.HTMLURL, *ev.Comment.User.Name),
+				false,
+				false,
+			),
+		),
+		slack.NewSectionBlock(
+			slack.NewTextBlockObject(
+				"plain_text", // xxx convert GH to Slack markdown
+				*ev.Comment.Body,
+				false,
+				false,
+			),
+			nil,
+			nil,
+		),
+	}
+
+	options = append(options, slack.MsgOptionBlocks(blocks...))
+	u, err := s.Users.ByGithubName(ctx, *ev.Comment.User.Name)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		// do nothing
+	case err != nil:
+		return errors.Wrapf(err, "looking up user %s", *ev.Comment.User.Name)
+	default:
+		options = append(options, slack.MsgOptionUser(u.SlackID)) // xxx also slack.MsgOptionAsUser(true)?
+	}
+
 	_, timestamp, err := s.SlackClient.PostMessageContext(ctx, channel.ChannelID, options...)
 	if err != nil {
 		return errors.Wrap(err, "posting message")
