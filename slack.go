@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/bobg/mid"
 	"github.com/google/go-github/v45/github"
@@ -43,7 +44,6 @@ func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 	case slackevents.CallbackEvent:
 		switch ev := ev.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
-			// xxx filter out bot messages (like the ones from this program!)
 			return s.OnMessage(ctx, ev)
 
 		case *slackevents.ReactionAddedEvent:
@@ -89,8 +89,6 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 		return errors.Wrapf(err, "getting info for channelID %s", ev.Channel)
 	}
 
-	// xxx filter out bot messages (like the ones from this program!)
-
 	user, err := s.Users.BySlackID(ctx, ev.User)
 	if errors.Is(err, ErrNotFound) {
 		user = nil
@@ -98,7 +96,21 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 		return errors.Wrapf(err, "getting info for userID %s", ev.User)
 	}
 
-	body := ev.Text // xxx convert Slack mrkdwn to GitHub Markdown
+	slackUser, err := s.SlackClient.GetUserInfoContext(ctx, ev.User)
+	if err != nil {
+		return errors.Wrapf(err, "getting Slack info for user %s", ev.User)
+	}
+
+	// Reverse-engineered Slack-comment link.
+	eventID := ev.EventTimeStamp.String()
+	eventID = strings.Replace(eventID, ".", "", -1)
+	commentURL := fmt.Sprintf("https://%s.slack.com/archives/%s/p%s", s.SlackTeam.Domain, ev.Channel, eventID)
+	if ev.ThreadTimeStamp != "" {
+		commentURL += fmt.Sprintf("?thread_ts=%s&cid=%s", ev.ThreadTimeStamp, ev.Channel)
+	}
+
+	// xxx convert Slack mrkdwn to GitHub Markdown
+	body := fmt.Sprintf("_[[comment](%s) from %s]_\n\n%s", commentURL, slackUser.Name, ev.Text)
 
 	var ghuser *github.User
 	if user != nil {
