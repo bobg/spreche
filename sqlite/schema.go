@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/google/go-github/v44/github"
+	"github.com/google/go-github/v45/github"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 
@@ -122,8 +122,8 @@ func (c *commentStore) ByThreadTimestamp(ctx context.Context, channelID, timesta
 	return result, err
 }
 
-func (c *commentStore) Update(ctx context.Context, channelID, timestamp string, commentID int64) error {
-	const q = `INSERT INTO comments (channel_id, thread_timestamp, comment_id) VALUES ($1, $2, $3) ON CONFLICT DO UPDATE SET comment_id = $3 WHERE channel_id = $1 AND thread_timestamp = $2`
+func (c *commentStore) Add(ctx context.Context, channelID, timestamp string, commentID int64) error {
+	const q = `INSERT INTO comments (channel_id, thread_timestamp, comment_id) VALUES ($1, $2, $3)`
 	_, err := c.db.ExecContext(ctx, q, channelID, timestamp, commentID)
 	return err
 }

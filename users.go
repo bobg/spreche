@@ -3,7 +3,7 @@ package spreche
 import (
 	"context"
 
-	"github.com/google/go-github/v44/github"
+	"github.com/google/go-github/v45/github"
 )
 
 func (s *Service) GHToSlackUsers(ctx context.Context, ghUsers []*github.User) ([]string, error) {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/go-github/v44/github"
+	"github.com/google/go-github/v45/github"
 	"github.com/slack-go/slack"
 )
 
@@ -33,7 +33,7 @@ type ChannelStore interface {
 type CommentStore interface {
 	ByCommentID(ctx context.Context, channelID string, commentID int64) (*Comment, error)
 	ByThreadTimestamp(ctx context.Context, channelID, timestamp string) (*Comment, error)
-	Update(ctx context.Context, channelID, timestamp string, commentID int64) error
+	Add(ctx context.Context, channelID, timestamp string, commentID int64) error
 }
 
 type UserStore interface {

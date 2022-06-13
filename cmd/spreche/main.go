@@ -15,7 +15,7 @@ import (
 	"github.com/bobg/mid"
 	"github.com/bobg/subcmd/v2"
 	"github.com/bradleyfalzon/ghinstallation/v2"
-	"github.com/google/go-github/v44/github"
+	"github.com/google/go-github/v45/github"
 	"github.com/pkg/errors"
 	"github.com/slack-go/slack"
 	"gopkg.in/yaml.v3"
