@@ -2,11 +2,11 @@ package spreche
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/go-github/v45/github"
+	"github.com/pkg/errors"
 	"github.com/slack-go/slack"
 )
 
@@ -16,10 +16,24 @@ type Service struct {
 	GHSecret           string
 	SlackClient        *slack.Client
 	SlackSigningSecret string
+	SlackTeam          *slack.TeamInfo
 
 	Channels ChannelStore
 	Comments CommentStore
 	Users    UserStore
+}
+
+func NewService(ctx context.Context, gh *github.Client, sl *slack.Client) (*Service, error) {
+	result := &Service{
+		GHClient:    gh,
+		SlackClient: sl,
+	}
+	team, err := sl.GetTeamInfoContext(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "getting team info")
+	}
+	result.SlackTeam = team
+	return result, nil
 }
 
 var ErrNotFound = errors.New("not found")

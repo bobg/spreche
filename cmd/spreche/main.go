@@ -107,16 +107,17 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 	}
 	defer closer()
 
-	s := &spreche.Service{
-		AdminKey:           c.AdminKey,
-		Channels:           channelStore,
-		Comments:           commentStore,
-		GHClient:           ghClient,
-		GHSecret:           c.GithubSecret,
-		SlackClient:        slackClient,
-		SlackSigningSecret: c.SlackSigningSecret,
-		Users:              userStore,
+	s, err := spreche.NewService(ctx, ghClient, slackClient)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	s.AdminKey = c.AdminKey
+	s.Channels = channelStore
+	s.Comments = commentStore
+	s.GHSecret = c.GithubSecret
+	s.SlackSigningSecret = c.SlackSigningSecret
+	s.Users = userStore
 
 	mux := http.NewServeMux()
 	mux.Handle("/github", mid.Err(s.OnGHWebhook))

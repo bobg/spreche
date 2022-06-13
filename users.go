@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/go-github/v45/github"
+	"github.com/pkg/errors"
 )
 
 func (s *Service) GHToSlackUsers(ctx context.Context, ghUsers []*github.User) ([]string, error) {
@@ -13,7 +14,14 @@ func (s *Service) GHToSlackUsers(ctx context.Context, ghUsers []*github.User) ([
 		if ghUser == nil {
 			continue
 		}
-		// xxx
+		u, err := s.Users.ByGithubName(ctx, *ghUser.Name)
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, errors.Wrapf(err, "looking up user %s", *ghUser.Name)
+		}
+		result = append(result, u.SlackID)
 	}
 
 	return result, nil
