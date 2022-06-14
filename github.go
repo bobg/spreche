@@ -217,6 +217,23 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 				false,
 			),
 		),
+	}
+	if !isReply && ev.Comment.DiffHunk != nil && *ev.Comment.DiffHunk != "" {
+		blocks = append(
+			blocks,
+			slack.NewContextBlock(
+				"",
+				slack.NewTextBlockObject(
+					"plain_text",
+					*ev.Comment.DiffHunk,
+					false,
+					true,
+				),
+			),
+		)
+	}
+	blocks = append(
+		blocks,
 		slack.NewSectionBlock(
 			slack.NewTextBlockObject(
 				"plain_text", // xxx convert GH to Slack markdown
@@ -227,7 +244,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 			nil,
 			nil,
 		),
-	}
+	)
 
 	options = append(options, slack.MsgOptionBlocks(blocks...))
 	u, err := s.Users.ByGithubName(ctx, *ev.Comment.User.Login)
