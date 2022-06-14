@@ -207,33 +207,27 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 
 	// xxx ensure channel exists
 
-	blocks := []slack.Block{
-		slack.NewContextBlock(
-			"",
-			slack.NewTextBlockObject(
-				"mrkdwn",
-				fmt.Sprintf("<%s|Review comment> by <%s|%s>", *ev.Comment.HTMLURL, *ev.Comment.User.HTMLURL, *ev.Comment.User.Login),
-				false,
-				false,
-			),
+	contextBlockElements := []slack.MixedElement{
+		slack.NewTextBlockObject(
+			"mrkdwn",
+			fmt.Sprintf("<%s|Review comment> by <%s|%s>", *ev.Comment.HTMLURL, *ev.Comment.User.HTMLURL, *ev.Comment.User.Login),
+			false,
+			false,
 		),
 	}
 	if !isReply && ev.Comment.DiffHunk != nil && *ev.Comment.DiffHunk != "" {
-		blocks = append(
-			blocks,
-			slack.NewContextBlock(
-				"",
-				slack.NewTextBlockObject(
-					"plain_text",
-					*ev.Comment.DiffHunk,
-					false,
-					true,
-				),
+		contextBlockElements = append(
+			contextBlockElements,
+			slack.NewTextBlockObject(
+				"plain_text",
+				*ev.Comment.DiffHunk,
+				false,
+				true,
 			),
 		)
 	}
-	blocks = append(
-		blocks,
+	blocks := []slack.Block{
+		slack.NewContextBlock("", contextBlockElements...),
 		slack.NewSectionBlock(
 			slack.NewTextBlockObject(
 				"plain_text", // xxx convert GH to Slack markdown
@@ -244,8 +238,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 			nil,
 			nil,
 		),
-	)
-
+	}
 	options = append(options, slack.MsgOptionBlocks(blocks...))
 	u, err := s.Users.ByGithubName(ctx, *ev.Comment.User.Login)
 	switch {

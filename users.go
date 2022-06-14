@@ -11,7 +11,7 @@ func (s *Service) GHToSlackUsers(ctx context.Context, ghUsers []*github.User) ([
 	var result []string
 
 	for _, ghUser := range ghUsers {
-		if ghUser == nil {
+		if ghUser == nil || ghUser.Name == nil {
 			continue
 		}
 		u, err := s.Users.ByGithubName(ctx, *ghUser.Name)
