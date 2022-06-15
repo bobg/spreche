@@ -126,6 +126,7 @@ func (s *Service) PROpened(ctx context.Context, ev *github.PullRequestEvent) err
 		body = *pr.Body
 	}
 	postOptions := []slack.MsgOption{
+		slack.MsgOptionDisableLinkUnfurl(),
 		slack.MsgOptionText(body, false), // xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
 	}
 	_, _, err = s.SlackClient.PostMessageContext(ctx, ch.ID, postOptions...)
@@ -193,7 +194,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.Name)
 	}
 	var (
-		options []slack.MsgOption
+		options = []slack.MsgOption{slack.MsgOptionDisableLinkUnfurl()}
 		isReply bool
 	)
 	if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
@@ -219,10 +220,10 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 		contextBlockElements = append(
 			contextBlockElements,
 			slack.NewTextBlockObject(
-				"plain_text",
-				*ev.Comment.DiffHunk,
+				"mrkdwn",
+				"```\n"+*ev.Comment.DiffHunk+"\n```", // xxx escaping? etc
 				false,
-				true,
+				false,
 			),
 		)
 	}
@@ -243,10 +244,12 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 	u, err := s.Users.ByGithubName(ctx, *ev.Comment.User.Login)
 	switch {
 	case errors.Is(err, ErrNotFound):
+		fmt.Printf("xxx did not find entry for GitHub user %s\n", *ev.Comment.User.Login)
 		// do nothing
 	case err != nil:
 		return errors.Wrapf(err, "looking up user %s", *ev.Comment.User.Login)
 	default:
+		fmt.Printf("xxx %s -> %s\n", *ev.Comment.User.Login, u.SlackID)
 		options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
 	}
 
