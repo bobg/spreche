@@ -126,6 +126,7 @@ func (s *Service) PROpened(ctx context.Context, ev *github.PullRequestEvent) err
 		body = *pr.Body
 	}
 	postOptions := []slack.MsgOption{
+		slack.MsgOptionDisableLinkUnfurl(),
 		slack.MsgOptionText(body, false), // xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
 	}
 	_, _, err = s.SlackClient.PostMessageContext(ctx, ch.ID, postOptions...)
@@ -193,7 +194,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.Name)
 	}
 	var (
-		options []slack.MsgOption
+		options = []slack.MsgOption{slack.MsgOptionDisableLinkUnfurl()}
 		isReply bool
 	)
 	if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
@@ -207,16 +208,27 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 
 	// xxx ensure channel exists
 
-	blocks := []slack.Block{
-		slack.NewContextBlock(
-			"",
+	contextBlockElements := []slack.MixedElement{
+		slack.NewTextBlockObject(
+			"mrkdwn",
+			fmt.Sprintf("<%s|Review comment> by <%s|%s>", *ev.Comment.HTMLURL, *ev.Comment.User.HTMLURL, *ev.Comment.User.Login),
+			false,
+			false,
+		),
+	}
+	if !isReply && ev.Comment.DiffHunk != nil && *ev.Comment.DiffHunk != "" {
+		contextBlockElements = append(
+			contextBlockElements,
 			slack.NewTextBlockObject(
 				"mrkdwn",
-				fmt.Sprintf("<%s|Review comment> by <%s|%s>", *ev.Comment.HTMLURL, *ev.Comment.User.HTMLURL, *ev.Comment.User.Login),
+				"```\n"+*ev.Comment.DiffHunk+"\n```", // xxx escaping? etc
 				false,
 				false,
 			),
-		),
+		)
+	}
+	blocks := []slack.Block{
+		slack.NewContextBlock("", contextBlockElements...),
 		slack.NewSectionBlock(
 			slack.NewTextBlockObject(
 				"plain_text", // xxx convert GH to Slack markdown
@@ -228,15 +240,16 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 			nil,
 		),
 	}
-
 	options = append(options, slack.MsgOptionBlocks(blocks...))
 	u, err := s.Users.ByGithubName(ctx, *ev.Comment.User.Login)
 	switch {
 	case errors.Is(err, ErrNotFound):
+		fmt.Printf("xxx did not find entry for GitHub user %s\n", *ev.Comment.User.Login)
 		// do nothing
 	case err != nil:
 		return errors.Wrapf(err, "looking up user %s", *ev.Comment.User.Login)
 	default:
+		fmt.Printf("xxx %s -> %s\n", *ev.Comment.User.Login, u.SlackID)
 		options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
 	}
 
