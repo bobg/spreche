@@ -9,6 +9,7 @@ require (
 	github.com/google/go-github/v45 v45.1.0
 	github.com/mattn/go-sqlite3 v1.14.12
 	github.com/pkg/errors v0.9.1
+	github.com/russross/blackfriday/v2 v2.1.0
 	github.com/slack-go/slack v0.10.3
 	gopkg.in/yaml.v3 v3.0.1
 )
