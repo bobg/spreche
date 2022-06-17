@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS channels (
   channel_id TEXT NOT NULL,
   owner TEXT NOT NULL,
   repo TEXT NOT NULL,
-  pr INT NOT NULL,
-  tenant_id INT NOT NULL
+  pr INTEGER NOT NULL,
+  tenant_id INTEGER NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS channel_id_index ON channels (channel_id, tenant_id);
@@ -26,8 +26,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS owner_repo_pr_index ON channels (owner, repo, 
 CREATE TABLE IF NOT EXISTS comments (
   channel_id TEXT NOT NULL,
   thread_timestamp TEXT NOT NULL,
-  comment_id INT NOT NULL,
-  tenant_id INT NOT NULL,
+  comment_id INTEGER NOT NULL,
+  tenant_id INTEGER NOT NULL,
   PRIMARY KEY (channel_id, thread_timestamp, tenant_id)
 );
 
@@ -36,7 +36,7 @@ CREATE INDEX IF NOT EXISTS channel_comment_index ON comments (channel_id, commen
 CREATE TABLE IF NOT EXISTS users (
   slack_id TEXT NOT NULL,
   github_name TEXT NOT NULL,
-  tenant_id INT NOT NULL
+  tenant_id INTEGER NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS slack_id_index ON users (slack_id, tenant_id);
