@@ -40,16 +40,35 @@ CREATE UNIQUE INDEX IF NOT EXISTS slack_id_index ON users (slack_id);
 CREATE UNIQUE INDEX IF NOT EXISTS github_name_index ON users (github_name);
 `
 
-func Open(ctx context.Context, conn string) (spreche.ChannelStore, spreche.CommentStore, spreche.UserStore, func() error, error) {
+type Stores struct {
+	Channels spreche.ChannelStore
+	Comments spreche.CommentStore
+	Users    spreche.UserStore
+
+	db *sql.DB
+}
+
+func Open(ctx context.Context, conn string) (Stores, error) {
 	db, err := sql.Open("sqlite3", conn)
 	if err != nil {
-		return nil, nil, nil, nil, errors.Wrapf(err, "opening %s", conn)
+		return Stores{}, errors.Wrapf(err, "opening %s", conn)
 	}
 	_, err = db.ExecContext(ctx, schema)
 	if err != nil {
-		return nil, nil, nil, nil, errors.Wrap(err, "instantiating schema") // xxx should close db
+		db.Close()
+		return Stores{}, errors.Wrap(err, "instantiating schema")
 	}
-	return &channelStore{db: db}, &commentStore{db: db}, &userStore{db: db}, db.Close, nil
+
+	return Stores{
+		Channels: channelStore{db: db},
+		Comments: commentStore{db: db},
+		Users:    userStore{db: db},
+		db:       db,
+	}, nil
+}
+
+func (s Stores) Close() error {
+	return s.db.Close()
 }
 
 type channelStore struct {
@@ -58,13 +77,13 @@ type channelStore struct {
 
 var _ spreche.ChannelStore = &channelStore{}
 
-func (c *channelStore) Add(ctx context.Context, channelID string, repo *github.Repository, prnum int) error {
+func (c channelStore) Add(ctx context.Context, channelID string, repo *github.Repository, prnum int) error {
 	const q = `INSERT INTO channels (channel_id, owner, repo, pr) VALUES ($1, $2, $3, $4)`
 	_, err := c.db.ExecContext(ctx, q, channelID, *repo.Owner.Login, *repo.Name, prnum)
 	return err
 }
 
-func (c *channelStore) ByChannelID(ctx context.Context, channelID string) (*spreche.Channel, error) {
+func (c channelStore) ByChannelID(ctx context.Context, channelID string) (*spreche.Channel, error) {
 	const q = `SELECT owner, repo, pr FROM channels WHERE channel_id = $1`
 	result := &spreche.Channel{
 		ChannelID: channelID,
@@ -76,7 +95,7 @@ func (c *channelStore) ByChannelID(ctx context.Context, channelID string) (*spre
 	return result, err
 }
 
-func (c *channelStore) ByRepoPR(ctx context.Context, repo *github.Repository, prnum int) (*spreche.Channel, error) {
+func (c channelStore) ByRepoPR(ctx context.Context, repo *github.Repository, prnum int) (*spreche.Channel, error) {
 	const q = `SELECT channel_id FROM channels WHERE owner = $1 AND repo = $2 AND pr = $3`
 	result := &spreche.Channel{
 		Owner: *repo.Owner.Login,
@@ -96,7 +115,7 @@ type commentStore struct {
 
 var _ spreche.CommentStore = &commentStore{}
 
-func (c *commentStore) ByCommentID(ctx context.Context, channelID string, commentID int64) (*spreche.Comment, error) {
+func (c commentStore) ByCommentID(ctx context.Context, channelID string, commentID int64) (*spreche.Comment, error) {
 	const q = `SELECT thread_timestamp FROM comments WHERE channel_id = $1 AND comment_id = $2`
 	result := &spreche.Comment{
 		ChannelID: channelID,
@@ -109,7 +128,7 @@ func (c *commentStore) ByCommentID(ctx context.Context, channelID string, commen
 	return result, err
 }
 
-func (c *commentStore) ByThreadTimestamp(ctx context.Context, channelID, timestamp string) (*spreche.Comment, error) {
+func (c commentStore) ByThreadTimestamp(ctx context.Context, channelID, timestamp string) (*spreche.Comment, error) {
 	const q = `SELECT comment_id FROM comments WHERE channel_id = $1 AND thread_timestamp = $2`
 	result := &spreche.Comment{
 		ChannelID:       channelID,
@@ -122,7 +141,7 @@ func (c *commentStore) ByThreadTimestamp(ctx context.Context, channelID, timesta
 	return result, err
 }
 
-func (c *commentStore) Add(ctx context.Context, channelID, timestamp string, commentID int64) error {
+func (c commentStore) Add(ctx context.Context, channelID, timestamp string, commentID int64) error {
 	const q = `INSERT INTO comments (channel_id, thread_timestamp, comment_id) VALUES ($1, $2, $3)`
 	_, err := c.db.ExecContext(ctx, q, channelID, timestamp, commentID)
 	return err
@@ -134,7 +153,7 @@ type userStore struct {
 
 var _ spreche.UserStore = &userStore{}
 
-func (u *userStore) BySlackID(ctx context.Context, slackID string) (*spreche.User, error) {
+func (u userStore) BySlackID(ctx context.Context, slackID string) (*spreche.User, error) {
 	const q = `SELECT github_name FROM users WHERE slack_id = $1`
 	result := &spreche.User{
 		SlackID: slackID,
@@ -146,7 +165,7 @@ func (u *userStore) BySlackID(ctx context.Context, slackID string) (*spreche.Use
 	return result, err
 }
 
-func (u *userStore) ByGithubName(ctx context.Context, githubName string) (*spreche.User, error) {
+func (u userStore) ByGithubName(ctx context.Context, githubName string) (*spreche.User, error) {
 	const q = `SELECT slack_id FROM users WHERE github_name = $1`
 	result := &spreche.User{
 		GithubName: githubName,
@@ -158,7 +177,7 @@ func (u *userStore) ByGithubName(ctx context.Context, githubName string) (*sprec
 	return result, err
 }
 
-func (u *userStore) Add(ctx context.Context, user *spreche.User) error {
+func (u userStore) Add(ctx context.Context, user *spreche.User) error {
 	const q = `INSERT INTO users (slack_id, github_name) VALUES ($1, $2)`
 	_, err := u.db.ExecContext(ctx, q, user.SlackID, user.GithubName)
 	return err

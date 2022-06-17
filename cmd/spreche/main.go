@@ -11,8 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strings"
 
 	"github.com/bobg/mid"
+	"github.com/bobg/pgtenant"
 	"github.com/bobg/subcmd/v2"
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v45/github"
@@ -50,7 +52,7 @@ func (maincmd) Subcmds() subcmd.Map {
 type config struct {
 	AdminKey             string `yaml:"admin_key"`
 	Certfile             string
-	Database             string // xxx should have a "sqlite3:" prefix or something to select different backends
+	Database             string
 	GithubPrivateKeyFile string `yaml:"github_private_key_file"`
 	GithubSecret         string `yaml:"github_secret"`
 	GithubAPIURL         string `yaml:"github_api_url"`    // "https://api.github.com/" or "https://HOST/api/v3/"
@@ -62,7 +64,7 @@ type config struct {
 }
 
 var defaultConfig = config{
-	Database:        "spreche.db",
+	Database:        "sqlite3:spreche.db",
 	GithubAPIURL:    "https://api.github.com/",
 	GithubUploadURL: "https://uploads.github.com/",
 	Listen:          ":3853",
@@ -96,28 +98,52 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 
 	ghClient, err := github.NewEnterpriseClient(c.GithubAPIURL, c.GithubUploadURL, &http.Client{Transport: itr})
 	if err != nil {
-		log.Fatalf("Creating GitHub client: %s", err)
+		return errors.Wrapf(err, "creating GitHub client")
 	}
 
 	slackClient := slack.New(c.SlackToken)
 
-	channelStore, commentStore, userStore, closer, err := sqlite.Open(ctx, c.Database)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer closer()
-
 	s, err := spreche.NewService(ctx, ghClient, slackClient)
 	if err != nil {
-		log.Fatal(err)
+		return errors.Wrap(err, "creating service object")
 	}
-
 	s.AdminKey = c.AdminKey
-	s.Channels = channelStore
-	s.Comments = commentStore
 	s.GHSecret = c.GithubSecret
 	s.SlackSigningSecret = c.SlackSigningSecret
-	s.Users = userStore
+
+	dbparts := strings.SplitN(c.Database, ":", 2)
+	if len(dbparts) < 2 {
+		return fmt.Errorf("bad database config string %s", c.Database)
+	}
+
+	switch dbparts[0] {
+	case "sqlite3":
+		stores, err := sqlite.Open(ctx, dbparts[1])
+		if err != nil {
+			return errors.Wrap(err, "opening database")
+		}
+		defer stores.Close()
+		s.Channels = stores.Channels
+		s.Comments = stores.Comments
+		s.Users = stores.Users
+
+	case "postgresql":
+		stores, err := sqlite.Open(ctx, dbparts[1])
+		if err != nil {
+			return errors.Wrap(err, "opening database")
+		}
+		defer stores.Close()
+		s.Channels = stores.Channels
+		s.Comments = stores.Comments
+		s.Users = stores.Users
+
+		// TODO: This is a placeholder to make the pgtenant logic work.
+		// Real multitenancy will involve switching on data in the incoming requests.
+		ctx = pgtenant.WithTenantID(ctx, 1)
+
+	default:
+		return fmt.Errorf("unknown database type %s", dbparts[0])
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("/github", mid.Err(s.OnGHWebhook))

@@ -85,11 +85,17 @@ func Open(ctx context.Context, dsn string) (Stores, error) {
 	}
 
 	_, err = db.ExecContext(pgtenant.WithQuery(ctx, schema), schema)
+	if err != nil {
+		db.Close()
+		return Stores{}, errors.Wrap(err, "instantiating schema")
+	}
+
 	return Stores{
 		Channels: channelStore{db: db},
 		Comments: commentStore{db: db},
 		Users:    userStore{db: db},
-	}, errors.Wrap(err, "creating schema")
+		db:       db,
+	}, nil
 }
 
 type Stores struct {
