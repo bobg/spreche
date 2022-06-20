@@ -42,15 +42,22 @@ func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 		return s.OnURLVerification(w, ev)
 
 	case slackevents.CallbackEvent:
+		teamID := ev.TeamID
+
+		gh, err := s.ghClientByTeam(ctx, teamID)
+		if err != nil {
+			return errors.Wrap(err, "getting GitHub client")
+		}
+
 		switch ev := ev.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
-			return s.OnMessage(ctx, ev)
+			return s.OnMessage(ctx, teamID, gh, ev)
 
 		case *slackevents.ReactionAddedEvent:
-			return s.OnReactionAdded(ctx, ev)
+			return s.OnReactionAdded(ctx, gh, ev)
 
 		case *slackevents.ReactionRemovedEvent:
-			return s.OnReactionRemoved(ctx, ev)
+			return s.OnReactionRemoved(ctx, gh, ev)
 		}
 
 		return fmt.Errorf("unknown data type %T for CallbackEvent", ev.Data)
@@ -68,7 +75,7 @@ func (s *Service) OnURLVerification(w http.ResponseWriter, ev slackevents.Events
 	return mid.RespondJSON(w, slackevents.ChallengeResponse{Challenge: v.Challenge})
 }
 
-func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) error {
+func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Client, ev *slackevents.MessageEvent) error {
 	if ev.ChannelType != "channel" {
 		return nil
 	}
@@ -84,6 +91,11 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 		}
 	}
 
+	sc, err := s.slackClientByTeam(ctx, teamID)
+	if err != nil {
+		return errors.Wrap(err, "getting slack client")
+	}
+
 	channel, err := s.Channels.ByChannelID(ctx, ev.Channel)
 	if err != nil {
 		return errors.Wrapf(err, "getting info for channelID %s", ev.Channel)
@@ -96,15 +108,20 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 		return errors.Wrapf(err, "getting info for userID %s", ev.User)
 	}
 
-	slackUser, err := s.SlackClient.GetUserInfoContext(ctx, ev.User)
+	slackUser, err := sc.GetUserInfoContext(ctx, ev.User)
 	if err != nil {
 		return errors.Wrapf(err, "getting Slack info for user %s", ev.User)
+	}
+
+	team, err := sc.GetTeamInfoContext(ctx)
+	if err != nil {
+		return errors.Wrap(err, "getting team info")
 	}
 
 	// Reverse-engineered Slack-comment link.
 	eventID := ev.EventTimeStamp.String()
 	eventID = strings.Replace(eventID, ".", "", -1)
-	commentURL := fmt.Sprintf("https://%s.slack.com/archives/%s/p%s", s.SlackTeam.Domain, ev.Channel, eventID)
+	commentURL := fmt.Sprintf("https://%s.slack.com/archives/%s/p%s", team.Domain, ev.Channel, eventID)
 	if ev.ThreadTimeStamp != "" {
 		commentURL += fmt.Sprintf("?thread_ts=%s&cid=%s", ev.ThreadTimeStamp, ev.Channel)
 	}
@@ -122,11 +139,11 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 		if err != nil {
 			return errors.Wrapf(err, "getting latest comment in thread %s", ev.ThreadTimeStamp)
 		}
-		_, _, err = s.GHClient.PullRequests.CreateCommentInReplyTo(ctx, channel.Owner, channel.Repo, channel.PR, body, comment.CommentID)
+		_, _, err = gh.PullRequests.CreateCommentInReplyTo(ctx, channel.Owner, channel.Repo, channel.PR, body, comment.CommentID)
 		return errors.Wrap(err, "creating comment")
 	}
 
-	issueComment, _, err := s.GHClient.Issues.CreateComment(ctx, channel.Owner, channel.Repo, channel.PR, &github.IssueComment{
+	issueComment, _, err := gh.Issues.CreateComment(ctx, channel.Owner, channel.Repo, channel.PR, &github.IssueComment{
 		Body: &body,
 		User: ghuser,
 	})
@@ -136,12 +153,12 @@ func (s *Service) OnMessage(ctx context.Context, ev *slackevents.MessageEvent) e
 	return s.Comments.Add(ctx, channel.ChannelID, ev.TimeStamp, *issueComment.ID)
 }
 
-func (s *Service) OnReactionAdded(ctx context.Context, ev *slackevents.ReactionAddedEvent) error {
+func (s *Service) OnReactionAdded(ctx context.Context, gh *github.Client, ev *slackevents.ReactionAddedEvent) error {
 	// xxx
 	return nil
 }
 
-func (s *Service) OnReactionRemoved(ctx context.Context, ev *slackevents.ReactionRemovedEvent) error {
+func (s *Service) OnReactionRemoved(ctx context.Context, gh *github.Client, ev *slackevents.ReactionRemovedEvent) error {
 	// xxx
 	return nil
 }

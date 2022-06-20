@@ -16,10 +16,7 @@ import (
 	"github.com/bobg/mid"
 	"github.com/bobg/pgtenant"
 	"github.com/bobg/subcmd/v2"
-	"github.com/bradleyfalzon/ghinstallation/v2"
-	"github.com/google/go-github/v45/github"
 	"github.com/pkg/errors"
-	"github.com/slack-go/slack"
 	"gopkg.in/yaml.v3"
 
 	"spreche"
@@ -72,11 +69,6 @@ var defaultConfig = config{
 
 var portRegex = regexp.MustCompile(`:(\d+)$`)
 
-const (
-	ghAppID          = 207677 // https://github.com/settings/apps/spreche
-	ghInstallationID = 26242918
-)
-
 func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) error {
 	f, err := os.Open(configPath)
 	if err != nil {
@@ -90,26 +82,11 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 		return errors.Wrap(err, "parsing config file")
 	}
 
-	itr, err := ghinstallation.NewKeyFromFile(http.DefaultTransport, ghAppID, ghInstallationID, c.GithubPrivateKeyFile)
-	if err != nil {
-		return errors.Wrapf(err, "reading GitHub private key from %s", c.GithubPrivateKeyFile)
+	s := spreche.Service{
+		AdminKey:           c.AdminKey,
+		GHSecret:           c.GithubSecret,
+		SlackSigningSecret: c.SlackSigningSecret,
 	}
-	itr.BaseURL = c.GithubAPIURL
-
-	ghClient, err := github.NewEnterpriseClient(c.GithubAPIURL, c.GithubUploadURL, &http.Client{Transport: itr})
-	if err != nil {
-		return errors.Wrapf(err, "creating GitHub client")
-	}
-
-	slackClient := slack.New(c.SlackToken)
-
-	s, err := spreche.NewService(ctx, ghClient, slackClient)
-	if err != nil {
-		return errors.Wrap(err, "creating service object")
-	}
-	s.AdminKey = c.AdminKey
-	s.GHSecret = c.GithubSecret
-	s.SlackSigningSecret = c.SlackSigningSecret
 
 	dbparts := strings.SplitN(c.Database, ":", 2)
 	if len(dbparts) < 2 {
