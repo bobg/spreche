@@ -40,7 +40,7 @@ func (s *Service) OnGHWebhook(w http.ResponseWriter, req *http.Request) error {
 }
 
 func (s *Service) OnPR(ctx context.Context, ev *github.PullRequestEvent) error {
-	sc, err := s.slackClientByRepo(ctx, ev.Repo)
+	sc, err := s.slackClientByRepo(ctx, *ev.Repo.FullName)
 	if err != nil {
 		return errors.Wrap(err, "getting slack client")
 	}
@@ -145,7 +145,7 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 		return nil
 	}
 
-	sc, err := s.slackClientByRepo(ctx, ev.Repo)
+	sc, err := s.slackClientByRepo(ctx, *ev.Repo.FullName)
 	if err != nil {
 		return errors.Wrap(err, "getting slack client")
 	}
@@ -201,7 +201,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 		return nil
 	}
 
-	sc, err := s.slackClientByRepo(ctx, ev.Repo)
+	sc, err := s.slackClientByRepo(ctx, *ev.Repo.FullName)
 	if err != nil {
 		return errors.Wrap(err, "getting slack client")
 	}

@@ -20,9 +20,10 @@ type Service struct {
 	SlackSigningSecret string
 	// SlackTeam          *slack.TeamInfo
 
-	Channels ChannelStore
-	Comments CommentStore
-	Users    UserStore
+	Channels     ChannelStore
+	Comments     CommentStore
+	Integrations IntegrationStore
+	Users        UserStore
 }
 
 var ErrNotFound = errors.New("not found")
@@ -37,6 +38,11 @@ type CommentStore interface {
 	ByCommentID(ctx context.Context, channelID string, commentID int64) (*Comment, error)
 	ByThreadTimestamp(ctx context.Context, channelID, timestamp string) (*Comment, error)
 	Add(ctx context.Context, channelID, timestamp string, commentID int64) error
+}
+
+type IntegrationStore interface {
+	ByRepo(context.Context, string) (*Integration, error)
+	ByTeam(context.Context, string) (*Integration, error)
 }
 
 type UserStore interface {
@@ -58,6 +64,13 @@ type Comment struct {
 	CommentID       int64
 }
 
+type Integration struct {
+	GHInstallationID      int64
+	GHPrivKey             []byte
+	GHAPIURL, GHUploadURL string
+	SlackToken            string
+}
+
 type User struct {
 	SlackID    string
 	GithubName string
@@ -73,33 +86,35 @@ func ChannelName(repo *github.Repository, prnum int) string {
 	return fmt.Sprintf("pr-%s-%s-%d", owner, name, prnum)
 }
 
-func (s *Service) slackClientByRepo(ctx context.Context, repo *github.Repository) (*slack.Client, error) {
-	var slackToken string
-	// xxx get the slack token for this repo
-	sc := slack.New(slackToken)
+func (s *Service) slackClientByRepo(ctx context.Context, repoURL string) (*slack.Client, error) {
+	integ, err := s.Integrations.ByRepo(ctx, repoURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "getting integration")
+	}
+	sc := slack.New(integ.SlackToken)
 	return sc, nil
 }
 
-func (*Service) slackClientByTeam(ctx context.Context, teamID string) (*slack.Client, error) {
-	var slackToken string
-	// xxx get the slack token for this repo
-	sc := slack.New(slackToken)
+func (s *Service) slackClientByTeam(ctx context.Context, teamID string) (*slack.Client, error) {
+	integ, err := s.Integrations.ByTeam(ctx, teamID)
+	if err != nil {
+		return nil, errors.Wrap(err, "getting integration")
+	}
+	sc := slack.New(integ.SlackToken)
 	return sc, nil
 }
 
 const ghAppID = 207677 // https://github.com/settings/apps/spreche
 
-func (*Service) ghClientByTeam(ctx context.Context, teamID string) (*github.Client, error) {
-	var (
-		ghInstallationID      int64
-		ghPrivateKey          []byte
-		ghAPIURL, ghUploadURL string
-	)
-	// xxx values for the above
-	itr, err := ghinstallation.New(http.DefaultTransport, ghAppID, ghInstallationID, ghPrivateKey)
+func (s *Service) ghClientByTeam(ctx context.Context, teamID string) (*github.Client, error) {
+	integ, err := s.Integrations.ByTeam(ctx, teamID)
+	if err != nil {
+		return nil, errors.Wrap(err, "getting integration")
+	}
+	itr, err := ghinstallation.New(http.DefaultTransport, ghAppID, integ.GHInstallationID, integ.GHPrivKey)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating transport for GitHub client")
 	}
-	itr.BaseURL = ghAPIURL
-	return github.NewEnterpriseClient(ghAPIURL, ghUploadURL, &http.Client{Transport: itr})
+	itr.BaseURL = integ.GHAPIURL
+	return github.NewEnterpriseClient(integ.GHAPIURL, integ.GHUploadURL, &http.Client{Transport: itr})
 }
