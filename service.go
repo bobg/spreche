@@ -65,6 +65,7 @@ type Comment struct {
 }
 
 type Tenant struct {
+	TenantID              int64
 	GHInstallationID      int64
 	GHPrivKey             []byte
 	GHAPIURL, GHUploadURL string
@@ -87,34 +88,34 @@ func ChannelName(repo *github.Repository, prnum int) string {
 }
 
 func (s *Service) slackClientByRepo(ctx context.Context, repoURL string) (*slack.Client, error) {
-	integ, err := s.Tenants.ByRepo(ctx, repoURL)
+	t, err := s.Tenants.ByRepo(ctx, repoURL)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenant")
 	}
-	sc := slack.New(integ.SlackToken)
+	sc := slack.New(t.SlackToken)
 	return sc, nil
 }
 
 func (s *Service) slackClientByTeam(ctx context.Context, teamID string) (*slack.Client, error) {
-	integ, err := s.Tenants.ByTeam(ctx, teamID)
+	t, err := s.Tenants.ByTeam(ctx, teamID)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenant")
 	}
-	sc := slack.New(integ.SlackToken)
+	sc := slack.New(t.SlackToken)
 	return sc, nil
 }
 
 const ghAppID = 207677 // https://github.com/settings/apps/spreche
 
 func (s *Service) ghClientByTeam(ctx context.Context, teamID string) (*github.Client, error) {
-	integ, err := s.Tenants.ByTeam(ctx, teamID)
+	t, err := s.Tenants.ByTeam(ctx, teamID)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenant")
 	}
-	itr, err := ghinstallation.New(http.DefaultTransport, ghAppID, integ.GHInstallationID, integ.GHPrivKey)
+	itr, err := ghinstallation.New(http.DefaultTransport, ghAppID, t.GHInstallationID, t.GHPrivKey)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating transport for GitHub client")
 	}
-	itr.BaseURL = integ.GHAPIURL
-	return github.NewEnterpriseClient(integ.GHAPIURL, integ.GHUploadURL, &http.Client{Transport: itr})
+	itr.BaseURL = t.GHAPIURL
+	return github.NewEnterpriseClient(t.GHAPIURL, t.GHUploadURL, &http.Client{Transport: itr})
 }
