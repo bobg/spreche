@@ -44,7 +44,7 @@ func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 	case slackevents.CallbackEvent:
 		teamID := ev.TeamID
 
-		gh, err := s.ghClientByTeam(ctx, teamID)
+		gh, err := s.ghClientByTeamID(ctx, teamID)
 		if err != nil {
 			return errors.Wrap(err, "getting GitHub client")
 		}
@@ -91,7 +91,7 @@ func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Clien
 		}
 	}
 
-	sc, err := s.slackClientByTeam(ctx, teamID)
+	sc, err := s.slackClientByTeamID(ctx, teamID)
 	if err != nil {
 		return errors.Wrap(err, "getting slack client")
 	}

@@ -13,12 +13,9 @@ import (
 )
 
 type Service struct {
-	AdminKey string
-	// GHClient           *github.Client
-	GHSecret string
-	// SlackClient        *slack.Client
+	AdminKey           string
+	GHSecret           string
 	SlackSigningSecret string
-	// SlackTeam          *slack.TeamInfo
 
 	Channels ChannelStore
 	Comments CommentStore
@@ -41,8 +38,8 @@ type CommentStore interface {
 }
 
 type TenantStore interface {
-	ByRepo(context.Context, string) (*Tenant, error)
-	ByTeam(context.Context, string) (*Tenant, error)
+	ByRepoURL(context.Context, string) (*Tenant, error)
+	ByTeamID(context.Context, string) (*Tenant, error)
 }
 
 type UserStore interface {
@@ -87,8 +84,8 @@ func ChannelName(repo *github.Repository, prnum int) string {
 	return fmt.Sprintf("pr-%s-%s-%d", owner, name, prnum)
 }
 
-func (s *Service) slackClientByRepo(ctx context.Context, repoURL string) (*slack.Client, error) {
-	t, err := s.Tenants.ByRepo(ctx, repoURL)
+func (s *Service) slackClientByRepoURL(ctx context.Context, repoURL string) (*slack.Client, error) {
+	t, err := s.Tenants.ByRepoURL(ctx, repoURL)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenant")
 	}
@@ -96,8 +93,8 @@ func (s *Service) slackClientByRepo(ctx context.Context, repoURL string) (*slack
 	return sc, nil
 }
 
-func (s *Service) slackClientByTeam(ctx context.Context, teamID string) (*slack.Client, error) {
-	t, err := s.Tenants.ByTeam(ctx, teamID)
+func (s *Service) slackClientByTeamID(ctx context.Context, teamID string) (*slack.Client, error) {
+	t, err := s.Tenants.ByTeamID(ctx, teamID)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenant")
 	}
@@ -107,8 +104,8 @@ func (s *Service) slackClientByTeam(ctx context.Context, teamID string) (*slack.
 
 const ghAppID = 207677 // https://github.com/settings/apps/spreche
 
-func (s *Service) ghClientByTeam(ctx context.Context, teamID string) (*github.Client, error) {
-	t, err := s.Tenants.ByTeam(ctx, teamID)
+func (s *Service) ghClientByTeamID(ctx context.Context, teamID string) (*github.Client, error) {
+	t, err := s.Tenants.ByTeamID(ctx, teamID)
 	if err != nil {
 		return nil, errors.Wrap(err, "getting tenant")
 	}

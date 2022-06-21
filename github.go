@@ -40,7 +40,7 @@ func (s *Service) OnGHWebhook(w http.ResponseWriter, req *http.Request) error {
 }
 
 func (s *Service) OnPR(ctx context.Context, ev *github.PullRequestEvent) error {
-	sc, err := s.slackClientByRepo(ctx, *ev.Repo.FullName)
+	sc, err := s.slackClientByRepoURL(ctx, *ev.Repo.HTMLURL)
 	if err != nil {
 		return errors.Wrap(err, "getting slack client")
 	}
@@ -145,14 +145,14 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 		return nil
 	}
 
-	sc, err := s.slackClientByRepo(ctx, *ev.Repo.FullName)
+	sc, err := s.slackClientByRepoURL(ctx, *ev.Repo.HTMLURL)
 	if err != nil {
 		return errors.Wrap(err, "getting slack client")
 	}
 
 	channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
 	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.Name)
+		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.HTMLURL)
 	}
 
 	// xxx ensure channel exists
@@ -201,14 +201,14 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 		return nil
 	}
 
-	sc, err := s.slackClientByRepo(ctx, *ev.Repo.FullName)
+	sc, err := s.slackClientByRepoURL(ctx, *ev.Repo.HTMLURL)
 	if err != nil {
 		return errors.Wrap(err, "getting slack client")
 	}
 
 	channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
 	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.Name)
+		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.HTMLURL)
 	}
 	var (
 		options = []slack.MsgOption{slack.MsgOptionDisableLinkUnfurl()}
