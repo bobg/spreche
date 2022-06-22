@@ -40,47 +40,45 @@ func (s *Service) OnGHWebhook(w http.ResponseWriter, req *http.Request) error {
 }
 
 func (s *Service) OnPR(ctx context.Context, ev *github.PullRequestEvent) error {
-	sc, err := s.slackClientByRepoURL(ctx, *ev.Repo.HTMLURL)
-	if err != nil {
-		return errors.Wrap(err, "getting slack client")
-	}
+	return s.Tenants.WithTenant(ctx, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
+		sc := tenant.SlackClient()
+		switch ev.GetAction() {
+		case "opened":
+			return s.PROpened(ctx, sc, ev)
 
-	switch ev.GetAction() {
-	case "opened":
-		return s.PROpened(ctx, sc, ev)
+		case "edited":
+			return s.PREdited(ctx, sc, ev)
 
-	case "edited":
-		return s.PREdited(ctx, sc, ev)
+		case "closed":
+			return s.PRClosed(ctx, sc, ev)
 
-	case "closed":
-		return s.PRClosed(ctx, sc, ev)
+		case "reopened":
+			return s.PRReopened(ctx, sc, ev)
 
-	case "reopened":
-		return s.PRReopened(ctx, sc, ev)
+		case "assigned":
+			return s.PRAssigned(ctx, sc, ev)
 
-	case "assigned":
-		return s.PRAssigned(ctx, sc, ev)
+		case "unassigned":
+			return s.PRUnassigned(ctx, sc, ev)
 
-	case "unassigned":
-		return s.PRUnassigned(ctx, sc, ev)
+		case "review_requested":
+			return s.PRReviewRequested(ctx, sc, ev)
 
-	case "review_requested":
-		return s.PRReviewRequested(ctx, sc, ev)
+		case "review_request_removed":
+			return s.PRReviewRequestRemoved(ctx, sc, ev)
 
-	case "review_request_removed":
-		return s.PRReviewRequestRemoved(ctx, sc, ev)
+		case "labeled":
+			return s.PRReviewRequestLabeled(ctx, sc, ev)
 
-	case "labeled":
-		return s.PRReviewRequestLabeled(ctx, sc, ev)
+		case "unlabeled":
+			return s.PRReviewRequestUnlabeled(ctx, sc, ev)
 
-	case "unlabeled":
-		return s.PRReviewRequestUnlabeled(ctx, sc, ev)
+		case "synchronize":
+			return s.PRReviewRequestSynchronize(ctx, sc, ev)
+		}
 
-	case "synchronize":
-		return s.PRReviewRequestSynchronize(ctx, sc, ev)
-	}
-
-	return fmt.Errorf("unknown PR event action %s", ev.GetAction())
+		return fmt.Errorf("unknown PR event action %s", ev.GetAction())
+	})
 }
 
 func (s *Service) PROpened(ctx context.Context, sc *slack.Client, ev *github.PullRequestEvent) error {
@@ -144,53 +142,50 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 	if ev.Review.Body == nil || *ev.Review.Body == "" {
 		return nil
 	}
+	return s.Tenants.WithTenant(ctx, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
+		sc := tenant.SlackClient()
+		channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
+		if err != nil {
+			return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.HTMLURL)
+		}
 
-	sc, err := s.slackClientByRepoURL(ctx, *ev.Repo.HTMLURL)
-	if err != nil {
-		return errors.Wrap(err, "getting slack client")
-	}
+		// xxx ensure channel exists
 
-	channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
-	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.HTMLURL)
-	}
-
-	// xxx ensure channel exists
-
-	blocks := []slack.Block{
-		slack.NewContextBlock(
-			"",
-			slack.NewTextBlockObject(
-				"mrkdwn",
-				fmt.Sprintf("<Review|%s> by <%s|%s>", *ev.Review.HTMLURL, *ev.Review.User.Login, *ev.Review.User.HTMLURL),
-				false,
-				false,
+		blocks := []slack.Block{
+			slack.NewContextBlock(
+				"",
+				slack.NewTextBlockObject(
+					"mrkdwn",
+					fmt.Sprintf("<Review|%s> by <%s|%s>", *ev.Review.HTMLURL, *ev.Review.User.Login, *ev.Review.User.HTMLURL),
+					false,
+					false,
+				),
 			),
-		),
-		slack.NewSectionBlock(
-			slack.NewTextBlockObject(
-				"plain_text", // xxx convert GH to Slack markdown
-				*ev.Review.Body,
-				false,
-				false,
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject(
+					"plain_text", // xxx convert GH to Slack markdown
+					*ev.Review.Body,
+					false,
+					false,
+				),
+				nil,
+				nil,
 			),
-			nil,
-			nil,
-		),
-	}
+		}
 
-	options := []slack.MsgOption{slack.MsgOptionBlocks(blocks...)}
-	u, err := s.Users.ByGithubName(ctx, *ev.Review.User.Login)
-	switch {
-	case errors.Is(err, ErrNotFound):
-		// do nothing
-	case err != nil:
-		return errors.Wrapf(err, "looking up user %s", *ev.Review.User.Login)
-	default:
-		options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
-	}
-	_, _, err = sc.PostMessageContext(ctx, channel.ChannelID, options...)
-	return errors.Wrap(err, "posting message")
+		options := []slack.MsgOption{slack.MsgOptionBlocks(blocks...)}
+		u, err := s.Users.ByGithubName(ctx, *ev.Review.User.Login)
+		switch {
+		case errors.Is(err, ErrNotFound):
+			// do nothing
+		case err != nil:
+			return errors.Wrapf(err, "looking up user %s", *ev.Review.User.Login)
+		default:
+			options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
+		}
+		_, _, err = sc.PostMessageContext(ctx, channel.ChannelID, options...)
+		return errors.Wrap(err, "posting message")
+	})
 }
 
 func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestReviewCommentEvent) error {
@@ -200,84 +195,81 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 	if ev.Comment.User != nil && ev.Comment.User.Type != nil && *ev.Comment.User.Type == "Bot" {
 		return nil
 	}
-
-	sc, err := s.slackClientByRepoURL(ctx, *ev.Repo.HTMLURL)
-	if err != nil {
-		return errors.Wrap(err, "getting slack client")
-	}
-
-	channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
-	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.HTMLURL)
-	}
-	var (
-		options = []slack.MsgOption{slack.MsgOptionDisableLinkUnfurl()}
-		isReply bool
-	)
-	if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
-		isReply = true
-		comment, err := s.Comments.ByCommentID(ctx, channel.ChannelID, *ev.Comment.InReplyTo)
+	return s.Tenants.WithTenant(ctx, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
+		sc := tenant.SlackClient()
+		channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
 		if err != nil {
-			return errors.Wrapf(err, "finding comment in channel %s by commentID %d", channel.ChannelID, *ev.Comment.InReplyTo)
+			return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.HTMLURL)
 		}
-		options = append(options, slack.MsgOptionTS(comment.ThreadTimestamp))
-	}
+		var (
+			options = []slack.MsgOption{slack.MsgOptionDisableLinkUnfurl()}
+			isReply bool
+		)
+		if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
+			isReply = true
+			comment, err := s.Comments.ByCommentID(ctx, channel.ChannelID, *ev.Comment.InReplyTo)
+			if err != nil {
+				return errors.Wrapf(err, "finding comment in channel %s by commentID %d", channel.ChannelID, *ev.Comment.InReplyTo)
+			}
+			options = append(options, slack.MsgOptionTS(comment.ThreadTimestamp))
+		}
 
-	// xxx ensure channel exists
+		// xxx ensure channel exists
 
-	contextBlockElements := []slack.MixedElement{
-		slack.NewTextBlockObject(
-			"mrkdwn",
-			fmt.Sprintf("<%s|Review comment> by <%s|%s>", *ev.Comment.HTMLURL, *ev.Comment.User.HTMLURL, *ev.Comment.User.Login),
-			false,
-			false,
-		),
-	}
-	if !isReply && ev.Comment.DiffHunk != nil && *ev.Comment.DiffHunk != "" {
-		contextBlockElements = append(
-			contextBlockElements,
+		contextBlockElements := []slack.MixedElement{
 			slack.NewTextBlockObject(
 				"mrkdwn",
-				"```\n"+*ev.Comment.DiffHunk+"\n```", // xxx escaping? etc
+				fmt.Sprintf("<%s|Review comment> by <%s|%s>", *ev.Comment.HTMLURL, *ev.Comment.User.HTMLURL, *ev.Comment.User.Login),
 				false,
 				false,
 			),
-		)
-	}
-	blocks := []slack.Block{
-		slack.NewContextBlock("", contextBlockElements...),
-		slack.NewSectionBlock(
-			slack.NewTextBlockObject(
-				"plain_text", // xxx convert GH to Slack markdown
-				*ev.Comment.Body,
-				false,
-				false,
+		}
+		if !isReply && ev.Comment.DiffHunk != nil && *ev.Comment.DiffHunk != "" {
+			contextBlockElements = append(
+				contextBlockElements,
+				slack.NewTextBlockObject(
+					"mrkdwn",
+					"```\n"+*ev.Comment.DiffHunk+"\n```", // xxx escaping? etc
+					false,
+					false,
+				),
+			)
+		}
+		blocks := []slack.Block{
+			slack.NewContextBlock("", contextBlockElements...),
+			slack.NewSectionBlock(
+				slack.NewTextBlockObject(
+					"plain_text", // xxx convert GH to Slack markdown
+					*ev.Comment.Body,
+					false,
+					false,
+				),
+				nil,
+				nil,
 			),
-			nil,
-			nil,
-		),
-	}
-	options = append(options, slack.MsgOptionBlocks(blocks...))
-	u, err := s.Users.ByGithubName(ctx, *ev.Comment.User.Login)
-	switch {
-	case errors.Is(err, ErrNotFound):
-		fmt.Printf("xxx did not find entry for GitHub user %s\n", *ev.Comment.User.Login)
-		// do nothing
-	case err != nil:
-		return errors.Wrapf(err, "looking up user %s", *ev.Comment.User.Login)
-	default:
-		fmt.Printf("xxx %s -> %s\n", *ev.Comment.User.Login, u.SlackID)
-		options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
-	}
+		}
+		options = append(options, slack.MsgOptionBlocks(blocks...))
+		u, err := s.Users.ByGithubName(ctx, *ev.Comment.User.Login)
+		switch {
+		case errors.Is(err, ErrNotFound):
+			fmt.Printf("xxx did not find entry for GitHub user %s\n", *ev.Comment.User.Login)
+			// do nothing
+		case err != nil:
+			return errors.Wrapf(err, "looking up user %s", *ev.Comment.User.Login)
+		default:
+			fmt.Printf("xxx %s -> %s\n", *ev.Comment.User.Login, u.SlackID)
+			options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
+		}
 
-	_, timestamp, err := sc.PostMessageContext(ctx, channel.ChannelID, options...)
-	if err != nil {
-		return errors.Wrap(err, "posting message")
-	}
-	if isReply {
-		return nil
-	}
-	return s.Comments.Add(ctx, channel.ChannelID, timestamp, *ev.Comment.ID)
+		_, timestamp, err := sc.PostMessageContext(ctx, channel.ChannelID, options...)
+		if err != nil {
+			return errors.Wrap(err, "posting message")
+		}
+		if isReply {
+			return nil
+		}
+		return s.Comments.Add(ctx, channel.ChannelID, timestamp, *ev.Comment.ID)
+	})
 }
 
 func (s *Service) OnPRReviewThread(ctx context.Context, ev *github.PullRequestReviewThreadEvent) error {

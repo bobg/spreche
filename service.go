@@ -38,8 +38,7 @@ type CommentStore interface {
 }
 
 type TenantStore interface {
-	ByRepoURL(context.Context, string) (*Tenant, error)
-	ByTeamID(context.Context, string) (*Tenant, error)
+	WithTenant(ctx context.Context, repoURL, teamID string, f func(context.Context, *Tenant) error) error
 }
 
 type UserStore interface {
@@ -69,6 +68,21 @@ type Tenant struct {
 	SlackToken            string
 }
 
+const ghAppID = 207677 // https://github.com/settings/apps/spreche
+
+func (t *Tenant) GHClient() (*github.Client, error) {
+	itr, err := ghinstallation.New(http.DefaultTransport, ghAppID, t.GHInstallationID, t.GHPrivKey)
+	if err != nil {
+		return nil, errors.Wrap(err, "creating transport for GitHub client")
+	}
+	itr.BaseURL = t.GHAPIURL
+	return github.NewEnterpriseClient(t.GHAPIURL, t.GHUploadURL, &http.Client{Transport: itr})
+}
+
+func (t *Tenant) SlackClient() *slack.Client {
+	return slack.New(t.SlackToken)
+}
+
 type User struct {
 	SlackID    string
 	GithubName string
@@ -82,37 +96,4 @@ func ChannelName(repo *github.Repository, prnum int) string {
 		name  = strings.ToLower(*repo.Name)
 	)
 	return fmt.Sprintf("pr-%s-%s-%d", owner, name, prnum)
-}
-
-func (s *Service) slackClientByRepoURL(ctx context.Context, repoURL string) (*slack.Client, error) {
-	t, err := s.Tenants.ByRepoURL(ctx, repoURL)
-	if err != nil {
-		return nil, errors.Wrap(err, "getting tenant")
-	}
-	sc := slack.New(t.SlackToken)
-	return sc, nil
-}
-
-func (s *Service) slackClientByTeamID(ctx context.Context, teamID string) (*slack.Client, error) {
-	t, err := s.Tenants.ByTeamID(ctx, teamID)
-	if err != nil {
-		return nil, errors.Wrap(err, "getting tenant")
-	}
-	sc := slack.New(t.SlackToken)
-	return sc, nil
-}
-
-const ghAppID = 207677 // https://github.com/settings/apps/spreche
-
-func (s *Service) ghClientByTeamID(ctx context.Context, teamID string) (*github.Client, error) {
-	t, err := s.Tenants.ByTeamID(ctx, teamID)
-	if err != nil {
-		return nil, errors.Wrap(err, "getting tenant")
-	}
-	itr, err := ghinstallation.New(http.DefaultTransport, ghAppID, t.GHInstallationID, t.GHPrivKey)
-	if err != nil {
-		return nil, errors.Wrap(err, "creating transport for GitHub client")
-	}
-	itr.BaseURL = t.GHAPIURL
-	return github.NewEnterpriseClient(t.GHAPIURL, t.GHUploadURL, &http.Client{Transport: itr})
 }

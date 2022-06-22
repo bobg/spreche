@@ -176,40 +176,42 @@ type tenantStore struct {
 
 var _ spreche.TenantStore = &tenantStore{}
 
-func (t *tenantStore) ByRepoURL(ctx context.Context, repoURL string) (*spreche.Tenant, error) {
-	const q = `
-		SELECT r.tenant_id, t.gh_installation_id, t.gh_priv_key, t.gh_api_url, t.gh_upload_url, t.slack_token
-			FROM tenant_repos r, tenants t
-			WHERE r.tenant_id = t.tenant_id AND t.repo_url = $1
-	`
-	var result speche.Tenant
-	err := t.db.QueryRowContext(ctx, q, repoURL).Scan(
-		&result.TenantID,
-		&result.GHInstallationID,
-		&result.GHPrivKey,
-		&result.GHAPIURL,
-		&result.GHUploadURL,
-		&result.SlackToken,
+func (t *tenantStore) WithTenant(ctx context.Context, repoURL, teamID string, f func(context.Context, *spreche.Tenant) error) error {
+	const (
+		qRepo = `
+			SELECT r.tenant_id, t.gh_installation_id, t.gh_priv_key, t.gh_api_url, t.gh_upload_url, t.slack_token
+				FROM tenant_repos r, tenants t
+				WHERE r.tenant_id = t.tenant_id AND t.repo_url = $1
+		`
+		qTeam = `
+			SELECT tt.tenant_id, t.gh_installation_id, t.gh_priv_key, t.gh_api_url, t.gh_upload_url, t.slack_token
+				FROM tenant_teams tt, tenants t
+				WHERE tt.tenant_id = t.tenant_id AND t.team_id = $1
+		`
 	)
-	return &result, err
-}
 
-func (t *tenantStore) ByTeamID(ctx context.Context, teamID string) (*spreche.Tenant, error) {
-	const q = `
-		SELECT tt.tenant_id, t.gh_installation_id, t.gh_priv_key, t.gh_api_url, t.gh_upload_url, t.slack_token
-			FROM tenant_teams tt, tenants t
-			WHERE tt.tenant_id = t.tenant_id AND t.team_id = $1
-	`
-	var result speche.Tenant
-	err := t.db.QueryRowContext(ctx, q, repoURL).Scan(
-		&result.TenantID,
-		&result.GHInstallationID,
-		&result.GHPrivKey,
-		&result.GHAPIURL,
-		&result.GHUploadURL,
-		&result.SlackToken,
+	var q, arg string
+	if repoURL != "" {
+		q, arg = qRepo, repoURL
+	} else {
+		q, arg = qTeam, teamID
+	}
+
+	var tenant spreche.Tenant
+
+	err := t.db.QueryRowContext(ctx, q, arg).Scan(
+		&tenant.TenantID,
+		&tenant.GHInstallationID,
+		&tenant.GHPrivKey,
+		&tenant.GHAPIURL,
+		&tenant.GHUploadURL,
+		&tenant.SlackToken,
 	)
-	return &result, err
+	if err != nil {
+		return errors.Wrap(err, "getting tenant")
+	}
+	// xxx decorate context?
+	return f(ctx, &tenant)
 }
 
 type userStore struct {
