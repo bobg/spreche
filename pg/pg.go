@@ -33,6 +33,25 @@ CREATE TABLE IF NOT EXISTS comments (
 
 CREATE INDEX IF NOT EXISTS channel_comment_index ON comments (channel_id, comment_id, tenant_id);
 
+CREATE TABLE IF NOT EXISTS tenants (
+  tenant_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  gh_installation_id INTEGER NOT NULL,
+  gh_priv_key BLOB NOT NULL,
+  gh_api_url TEXT NOT NULL,
+  gh_upload_url TEXT NOT NULL,
+  slack_token TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tenant_repos (
+  repo_url TEXT NOT NULL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES tenants (tenant_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tenant_teams (
+  team_id TEXT NOT NULL PRIMARY KEY,
+  tenant_id INT NOT NULL REFERENCES tenants (tenant_id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS users (
   slack_id TEXT NOT NULL,
   github_name TEXT NOT NULL,
@@ -93,6 +112,7 @@ func Open(ctx context.Context, dsn string) (Stores, error) {
 	return Stores{
 		Channels: channelStore{db: db},
 		Comments: commentStore{db: db},
+		Tenants:  tenantStore{db: db},
 		Users:    userStore{db: db},
 		db:       db,
 	}, nil
@@ -101,6 +121,7 @@ func Open(ctx context.Context, dsn string) (Stores, error) {
 type Stores struct {
 	Channels spreche.ChannelStore
 	Comments spreche.CommentStore
+	Tenants  spreche.TenantStore
 	Users    spreche.UserStore
 
 	db *sql.DB
@@ -184,6 +205,52 @@ func (c commentStore) Add(ctx context.Context, channelID, timestamp string, comm
 	const q = `INSERT INTO comments (channel_id, thread_timestamp, comment_id) VALUES ($1, $2, $3)`
 	_, err := c.db.ExecContext(ctx, q, channelID, timestamp, commentID)
 	return err
+}
+
+type tenantStore struct {
+	db *sql.DB
+}
+
+var _ spreche.TenantStore = &tenantStore{}
+
+func (t tenantStore) WithTenant(ctx context.Context, repoURL, teamID string, f func(context.Context, *spreche.Tenant) error) error {
+	const (
+		qRepo = `
+			SELECT r.tenant_id, t.gh_installation_id, t.gh_priv_key, t.gh_api_url, t.gh_upload_url, t.slack_token
+				FROM tenant_repos r, tenants t
+				WHERE r.tenant_id = t.tenant_id AND t.repo_url = $1
+		`
+		qTeam = `
+			SELECT tt.tenant_id, t.gh_installation_id, t.gh_priv_key, t.gh_api_url, t.gh_upload_url, t.slack_token
+				FROM tenant_teams tt, tenants t
+				WHERE tt.tenant_id = t.tenant_id AND t.team_id = $1
+		`
+	)
+
+	var q, arg string
+	if repoURL != "" {
+		q, arg = qRepo, repoURL
+	} else {
+		q, arg = qTeam, teamID
+	}
+
+	var tenant spreche.Tenant
+
+	err := t.db.QueryRowContext(pgtenant.Suppress(ctx), q, arg).Scan(
+		&tenant.TenantID,
+		&tenant.GHInstallationID,
+		&tenant.GHPrivKey,
+		&tenant.GHAPIURL,
+		&tenant.GHUploadURL,
+		&tenant.SlackToken,
+	)
+	if err != nil {
+		return errors.Wrap(err, "getting tenant")
+	}
+
+	ctx = pgtenant.WithTenantID(ctx, tenant.TenantID)
+	// xxx decorate with tenant object too?
+	return f(ctx, &tenant)
 }
 
 type userStore struct {
