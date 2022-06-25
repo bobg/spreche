@@ -3,7 +3,9 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
+	"github.com/bobg/sqlutil"
 	"github.com/google/go-github/v45/github"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
@@ -176,8 +178,13 @@ type tenantStore struct {
 
 var _ spreche.TenantStore = &tenantStore{}
 
-func (t *tenantStore) WithTenant(ctx context.Context, repoURL, teamID string, f func(context.Context, *spreche.Tenant) error) error {
+func (t *tenantStore) WithTenant(ctx context.Context, tenantID int64, repoURL, teamID string, f func(context.Context, *spreche.Tenant) error) error {
 	const (
+		qTenantID = `
+			SELECT gh_installation_id, gh_priv_key, gh_api_url, gh_upload_url, slack_token
+				FROM tenants
+				WHERE tenant_id = $1
+		`
 		qRepo = `
 			SELECT r.tenant_id, t.gh_installation_id, t.gh_priv_key, t.gh_api_url, t.gh_upload_url, t.slack_token
 				FROM tenant_repos r, tenants t
@@ -190,11 +197,19 @@ func (t *tenantStore) WithTenant(ctx context.Context, repoURL, teamID string, f 
 		`
 	)
 
-	var q, arg string
-	if repoURL != "" {
+	var (
+		q   string
+		arg any
+	)
+	switch {
+	case tenantID != 0:
+		q, arg = qTenantID, tenantID
+	case repoURL != "":
 		q, arg = qRepo, repoURL
-	} else {
+	case teamID != "":
 		q, arg = qTeam, teamID
+	default:
+		return fmt.Errorf("WithTenant must be called with one of tenantID, repoURL, or teamID")
 	}
 
 	var tenant spreche.Tenant
@@ -210,8 +225,45 @@ func (t *tenantStore) WithTenant(ctx context.Context, repoURL, teamID string, f 
 	if err != nil {
 		return errors.Wrap(err, "getting tenant")
 	}
-	// xxx decorate context?
 	return f(ctx, &tenant)
+}
+
+func (t *tenantStore) Add(ctx context.Context, vals *spreche.Tenant) error {
+	const q = `INSERT INTO tenants (gh_installation_id, gh_priv_key, gh_api_url, gh_upload_url, slack_token) VALUES ($1, $2, $3, $4, $5)`
+	res, err := t.db.ExecContext(ctx, q, vals.GHInstallationID, vals.GHPrivKey, vals.GHAPIURL, vals.GHUploadURL, vals.SlackToken)
+	if err != nil {
+		return errors.Wrap(err, "inserting tenant row")
+	}
+	vals.TenantID, err = res.LastInsertId()
+	return errors.Wrap(err, "getting last insert ID")
+}
+
+func (t *tenantStore) AddRepo(ctx context.Context, tenantID int64, repoURL string) error {
+	const q = `INSERT INTO tenant_repos (tenant_id, repo_url) VALUES ($1, $2)`
+	_, err := t.db.ExecContext(ctx, q, tenantID, repoURL)
+	return err
+}
+
+func (t *tenantStore) AddTeam(ctx context.Context, tenantID int64, teamID string) error {
+	const q = `INSERT INTO tenant_teams (tenant_id, team_id) VALUES ($1, $2)`
+	_, err := t.db.ExecContext(ctx, q, tenantID, teamID)
+	return err
+}
+
+func (t *tenantStore) Foreach(ctx context.Context, f func(*spreche.Tenant) error) error {
+	const q = `SELECT tenant_id, gh_installation_id, gh_priv_key, gh_api_url, gh_upload_url, slack_token FROM tenants`
+	return sqlutil.ForQueryRows(ctx, t.db, q, func(tenantID, ghInstallationID int64, ghPrivKey []byte, ghAPIURL, ghUploadURL, slackToken string) error {
+		var tenant = &spreche.Tenant{
+			TenantID:         tenantID,
+			GHInstallationID: ghInstallationID,
+			GHPrivKey:        ghPrivKey,
+			GHAPIURL:         ghAPIURL,
+			GHUploadURL:      ghUploadURL,
+			SlackToken:       slackToken,
+		}
+		// xxx add repos and teams
+		return f(tenant)
+	})
 }
 
 type userStore struct {

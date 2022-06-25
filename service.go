@@ -38,7 +38,11 @@ type CommentStore interface {
 }
 
 type TenantStore interface {
-	WithTenant(ctx context.Context, repoURL, teamID string, f func(context.Context, *Tenant) error) error
+	WithTenant(ctx context.Context, tenantID int64, repoURL, teamID string, f func(context.Context, *Tenant) error) error
+	Add(context.Context, *Tenant) error
+	AddRepo(context.Context, int64, string) error
+	AddTeam(context.Context, int64, string) error
+	Foreach(context.Context, func(*Tenant) error) error
 }
 
 type UserStore interface {
@@ -61,11 +65,14 @@ type Comment struct {
 }
 
 type Tenant struct {
-	TenantID              int64
-	GHInstallationID      int64
-	GHPrivKey             []byte
-	GHAPIURL, GHUploadURL string
-	SlackToken            string
+	TenantID         int64    `json:"tenant_id"`
+	GHInstallationID int64    `json:"gh_installation_id"`
+	GHPrivKey        []byte   `json:"-"`
+	GHAPIURL         string   `json:"gh_api_url"`
+	GHUploadURL      string   `json:"gh_upload_url"`
+	SlackToken       string   `json:"-"`
+	RepoURLs         []string `json:"repo_urls,omitempty"`
+	TeamIDs          []string `json:"team_ids,omitempty"`
 }
 
 const ghAppID = 207677 // https://github.com/settings/apps/spreche

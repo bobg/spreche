@@ -40,7 +40,7 @@ func (s *Service) OnGHWebhook(w http.ResponseWriter, req *http.Request) error {
 }
 
 func (s *Service) OnPR(ctx context.Context, ev *github.PullRequestEvent) error {
-	return s.Tenants.WithTenant(ctx, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
+	return s.Tenants.WithTenant(ctx, 0, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
 		sc := tenant.SlackClient()
 		switch ev.GetAction() {
 		case "opened":
@@ -142,7 +142,7 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 	if ev.Review.Body == nil || *ev.Review.Body == "" {
 		return nil
 	}
-	return s.Tenants.WithTenant(ctx, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
+	return s.Tenants.WithTenant(ctx, 0, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
 		sc := tenant.SlackClient()
 		channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
 		if err != nil {
@@ -195,7 +195,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 	if ev.Comment.User != nil && ev.Comment.User.Type != nil && *ev.Comment.User.Type == "Bot" {
 		return nil
 	}
-	return s.Tenants.WithTenant(ctx, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
+	return s.Tenants.WithTenant(ctx, 0, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
 		sc := tenant.SlackClient()
 		channel, err := s.Channels.ByRepoPR(ctx, ev.Repo, *ev.PullRequest.Number)
 		if err != nil {

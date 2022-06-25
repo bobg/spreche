@@ -6,8 +6,10 @@ import (
 	"github.com/bobg/subcmd/v2"
 )
 
-func (a admincmd) doUser(ctx context.Context, args []string) error {
-	return subcmd.Run(ctx, usercmd{s: a.s}, args)
+func (a admincmd) doUser(ctx context.Context, tenantID int64, args []string) error {
+	return a.s.Tenants.WithTenant(ctx, tenantID, "", "", func(ctx context.Context, tenant *Tenant) error {
+		return subcmd.Run(ctx, usercmd{s: a.s}, args)
+	})
 }
 
 type usercmd struct{ s *Service }

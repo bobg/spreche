@@ -44,7 +44,7 @@ func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 	case slackevents.CallbackEvent:
 		teamID := ev.TeamID
 
-		return s.Tenants.WithTenant(ctx, "", teamID, func(ctx context.Context, tenant *Tenant) error {
+		return s.Tenants.WithTenant(ctx, 0, "", teamID, func(ctx context.Context, tenant *Tenant) error {
 			gh, err := tenant.GHClient()
 			if err != nil {
 				return errors.Wrap(err, "getting GitHub client")
@@ -93,7 +93,7 @@ func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Clien
 		}
 	}
 
-	return s.Tenants.WithTenant(ctx, "", teamID, func(ctx context.Context, tenant *Tenant) error {
+	return s.Tenants.WithTenant(ctx, 0, "", teamID, func(ctx context.Context, tenant *Tenant) error {
 		sc := tenant.SlackClient()
 
 		channel, err := s.Channels.ByChannelID(ctx, ev.Channel)
