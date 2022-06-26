@@ -14,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/bobg/mid"
-	"github.com/bobg/pgtenant"
 	"github.com/bobg/subcmd/v2"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
@@ -113,10 +112,6 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 		s.Channels = stores.Channels
 		s.Comments = stores.Comments
 		s.Users = stores.Users
-
-		// TODO: This is a placeholder to make the pgtenant logic work.
-		// Real multitenancy will involve switching on data in the incoming requests.
-		ctx = pgtenant.WithTenantID(ctx, 1)
 
 	default:
 		return fmt.Errorf("unknown database type %s", dbparts[0])
