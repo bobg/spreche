@@ -7,14 +7,14 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (s *Service) GHToSlackUsers(ctx context.Context, ghUsers []*github.User) ([]string, error) {
+func (s *Service) GHToSlackUsers(ctx context.Context, tenantID int64, ghUsers []*github.User) ([]string, error) {
 	var result []string
 
 	for _, ghUser := range ghUsers {
 		if ghUser == nil || ghUser.Name == nil {
 			continue
 		}
-		u, err := s.Users.ByGithubName(ctx, *ghUser.Name)
+		u, err := s.Users.ByGithubName(ctx, tenantID, *ghUser.Name)
 		if errors.Is(err, ErrNotFound) {
 			continue
 		}

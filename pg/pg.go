@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
-	"github.com/bobg/pgtenant"
+	"github.com/bobg/go-generics/slices"
 	"github.com/bobg/sqlutil"
 	"github.com/google/go-github/v45/github"
+	"github.com/lib/pq"
 	"github.com/pkg/errors"
 
 	"spreche"
@@ -15,25 +17,25 @@ import (
 
 const schema = `
 CREATE TABLE IF NOT EXISTS channels (
+  tenant_id INTEGER NOT NULL,
   channel_id TEXT NOT NULL,
   owner TEXT NOT NULL,
   repo TEXT NOT NULL,
-  pr INTEGER NOT NULL,
-  tenant_id INTEGER NOT NULL
+  pr INTEGER NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS channel_id_index ON channels (channel_id, tenant_id);
-CREATE UNIQUE INDEX IF NOT EXISTS owner_repo_pr_index ON channels (owner, repo, pr, tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS channel_id_index ON channels (tenant_id, channel_id);
+CREATE UNIQUE INDEX IF NOT EXISTS owner_repo_pr_index ON channels (tenant_id, owner, repo, pr);
 
 CREATE TABLE IF NOT EXISTS comments (
+  tenant_id INTEGER NOT NULL,
   channel_id TEXT NOT NULL,
   thread_timestamp TEXT NOT NULL,
   comment_id INTEGER NOT NULL,
-  tenant_id INTEGER NOT NULL,
-  PRIMARY KEY (channel_id, thread_timestamp, tenant_id)
+  PRIMARY KEY (tenant_id, channel_id, thread_timestamp)
 );
 
-CREATE INDEX IF NOT EXISTS channel_comment_index ON comments (channel_id, comment_id, tenant_id);
+CREATE INDEX IF NOT EXISTS channel_comment_index ON comments (tenant_id, channel_id, comment_id);
 
 CREATE TABLE IF NOT EXISTS tenants (
   tenant_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -45,67 +47,32 @@ CREATE TABLE IF NOT EXISTS tenants (
 );
 
 CREATE TABLE IF NOT EXISTS tenant_repos (
-  repo_url TEXT NOT NULL PRIMARY KEY,
-  tenant_id INT NOT NULL REFERENCES tenants (tenant_id) ON DELETE CASCADE
+  tenant_id INT NOT NULL REFERENCES tenants (tenant_id) ON DELETE CASCADE,
+  repo_url TEXT NOT NULL PRIMARY KEY
 );
 
 CREATE TABLE IF NOT EXISTS tenant_teams (
-  team_id TEXT NOT NULL PRIMARY KEY,
-  tenant_id INT NOT NULL REFERENCES tenants (tenant_id) ON DELETE CASCADE
+  tenant_id INT NOT NULL REFERENCES tenants (tenant_id) ON DELETE CASCADE,
+  team_id TEXT NOT NULL PRIMARY KEY
 );
 
 CREATE TABLE IF NOT EXISTS users (
+  tenant_id INTEGER NOT NULL,
   slack_id TEXT NOT NULL,
-  github_name TEXT NOT NULL,
-  tenant_id INTEGER NOT NULL
+  github_name TEXT NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS slack_id_index ON users (slack_id, tenant_id);
-CREATE UNIQUE INDEX IF NOT EXISTS github_name_index ON users (github_name, tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS slack_id_index ON users (tenant_id, slack_id);
+CREATE UNIQUE INDEX IF NOT EXISTS github_name_index ON users (tenant_id, github_name);
 `
 
-var queries = map[string]pgtenant.Transformed{
-	`INSERT INTO channels (channel_id, owner, repo, pr) VALUES ($1, $2, $3, $4)`: {
-		Query: `INSERT INTO channels (channel_id, owner, repo, pr, tenant_id) VALUES ($1, $2, $3, $4, $5)`,
-		Num:   5,
-	},
-	`SELECT channel_id FROM channels WHERE owner = $1 AND repo = $2 AND pr = $3`: {
-		Query: `SELECT channel_id FROM channels WHERE owner = $1 AND repo = $2 AND pr = $3 AND tenant_id = $4`,
-		Num:   4,
-	},
-	`SELECT thread_timestamp FROM comments WHERE channel_id = $1 AND comment_id = $2`: {
-		Query: `SELECT thread_timestamp FROM comments WHERE channel_id = $1 AND comment_id = $2 AND tenant_id = $3`,
-		Num:   3,
-	},
-	`SELECT comment_id FROM comments WHERE channel_id = $1 AND thread_timestamp = $2`: {
-		Query: `SELECT comment_id FROM comments WHERE channel_id = $1 AND thread_timestamp = $2 AND tenant_id = $3`,
-		Num:   3,
-	},
-	`INSERT INTO comments (channel_id, thread_timestamp, comment_id) VALUES ($1, $2, $3)`: {
-		Query: `INSERT INTO comments (channel_id, thread_timestamp, comment_id, tenant_id) VALUES ($1, $2, $3, $4)`,
-		Num:   4,
-	},
-	`SELECT github_name FROM users WHERE slack_id = $1`: {
-		Query: `SELECT github_name FROM users WHERE slack_id = $1 AND tenant_id = $2`,
-		Num:   2,
-	},
-	`SELECT slack_id FROM users WHERE github_name = $1`: {
-		Query: `SELECT slack_id FROM users WHERE github_name = $1 AND tenant_id = $2`,
-		Num:   2,
-	},
-	`INSERT INTO users (slack_id, github_name) VALUES ($1, $2)`: {
-		Query: `INSERT INTO users (slack_id, github_name, tenant_id) VALUES ($1, $2, $3)`,
-		Num:   3,
-	},
-}
-
 func Open(ctx context.Context, dsn string) (Stores, error) {
-	db, err := pgtenant.Open(dsn, "tenant_id", queries)
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return Stores{}, errors.Wrap(err, "opening db")
 	}
 
-	_, err = db.ExecContext(pgtenant.WithQuery(ctx, schema), schema)
+	_, err = db.ExecContext(ctx, schema)
 	if err != nil {
 		db.Close()
 		return Stores{}, errors.Wrap(err, "instantiating schema")
@@ -137,34 +104,34 @@ type channelStore struct {
 	db *sql.DB
 }
 
-var _ spreche.ChannelStore = &channelStore{}
+var _ spreche.ChannelStore = channelStore{}
 
-func (c channelStore) Add(ctx context.Context, channelID string, repo *github.Repository, prnum int) error {
-	const q = `INSERT INTO channels (channel_id, owner, repo, pr) VALUES ($1, $2, $3, $4)`
-	_, err := c.db.ExecContext(ctx, q, channelID, *repo.Owner.Login, *repo.Name, prnum)
+func (c channelStore) Add(ctx context.Context, tenantID int64, channelID string, repo *github.Repository, prnum int) error {
+	const q = `INSERT INTO channels (tenant_id, channel_id, owner, repo, pr) VALUES ($1, $2, $3, $4, $5)`
+	_, err := c.db.ExecContext(ctx, q, tenantID, channelID, *repo.Owner.Login, *repo.Name, prnum)
 	return err
 }
 
-func (c channelStore) ByChannelID(ctx context.Context, channelID string) (*spreche.Channel, error) {
-	const q = `SELECT owner, repo, pr FROM channels WHERE channel_id = $1`
+func (c channelStore) ByChannelID(ctx context.Context, tenantID int64, channelID string) (*spreche.Channel, error) {
+	const q = `SELECT owner, repo, pr FROM channels WHERE tenant_id = $1 AND channel_id = $2`
 	result := &spreche.Channel{
 		ChannelID: channelID,
 	}
-	err := c.db.QueryRowContext(ctx, q, channelID).Scan(&result.Owner, &result.Repo, &result.PR)
+	err := c.db.QueryRowContext(ctx, q, tenantID, channelID).Scan(&result.Owner, &result.Repo, &result.PR)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = spreche.ErrNotFound
 	}
 	return result, err
 }
 
-func (c channelStore) ByRepoPR(ctx context.Context, repo *github.Repository, prnum int) (*spreche.Channel, error) {
-	const q = `SELECT channel_id FROM channels WHERE owner = $1 AND repo = $2 AND pr = $3`
+func (c channelStore) ByRepoPR(ctx context.Context, tenantID int64, repo *github.Repository, prnum int) (*spreche.Channel, error) {
+	const q = `SELECT channel_id FROM channels WHERE tenant_id = $1 AND owner = $2 AND repo = $3 AND pr = $4`
 	result := &spreche.Channel{
 		Owner: *repo.Owner.Login,
 		Repo:  *repo.Name,
 		PR:    prnum,
 	}
-	err := c.db.QueryRowContext(ctx, q, *repo.Owner.Login, *repo.Name, prnum).Scan(&result.ChannelID)
+	err := c.db.QueryRowContext(ctx, q, tenantID, *repo.Owner.Login, *repo.Name, prnum).Scan(&result.ChannelID)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = spreche.ErrNotFound
 	}
@@ -175,37 +142,37 @@ type commentStore struct {
 	db *sql.DB
 }
 
-var _ spreche.CommentStore = &commentStore{}
+var _ spreche.CommentStore = commentStore{}
 
-func (c commentStore) ByCommentID(ctx context.Context, channelID string, commentID int64) (*spreche.Comment, error) {
-	const q = `SELECT thread_timestamp FROM comments WHERE channel_id = $1 AND comment_id = $2`
+func (c commentStore) ByCommentID(ctx context.Context, tenantID int64, channelID string, commentID int64) (*spreche.Comment, error) {
+	const q = `SELECT thread_timestamp FROM comments WHERE tenant_id = $1 AND channel_id = $2 AND comment_id = $3`
 	result := &spreche.Comment{
 		ChannelID: channelID,
 		CommentID: commentID,
 	}
-	err := c.db.QueryRowContext(ctx, q, channelID, commentID).Scan(&result.ThreadTimestamp)
+	err := c.db.QueryRowContext(ctx, q, tenantID, channelID, commentID).Scan(&result.ThreadTimestamp)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = spreche.ErrNotFound
 	}
 	return result, err
 }
 
-func (c commentStore) ByThreadTimestamp(ctx context.Context, channelID, timestamp string) (*spreche.Comment, error) {
-	const q = `SELECT comment_id FROM comments WHERE channel_id = $1 AND thread_timestamp = $2`
+func (c commentStore) ByThreadTimestamp(ctx context.Context, tenantID int64, channelID, timestamp string) (*spreche.Comment, error) {
+	const q = `SELECT comment_id FROM comments WHERE tenant_id = $1 AND channel_id = $2 AND thread_timestamp = $3`
 	result := &spreche.Comment{
 		ChannelID:       channelID,
 		ThreadTimestamp: timestamp,
 	}
-	err := c.db.QueryRowContext(ctx, q, channelID, timestamp).Scan(&result.CommentID)
+	err := c.db.QueryRowContext(ctx, q, tenantID, channelID, timestamp).Scan(&result.CommentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = spreche.ErrNotFound
 	}
 	return result, err
 }
 
-func (c commentStore) Add(ctx context.Context, channelID, timestamp string, commentID int64) error {
-	const q = `INSERT INTO comments (channel_id, thread_timestamp, comment_id) VALUES ($1, $2, $3)`
-	_, err := c.db.ExecContext(ctx, q, channelID, timestamp, commentID)
+func (c commentStore) Add(ctx context.Context, tenantID int64, channelID, timestamp string, commentID int64) error {
+	const q = `INSERT INTO comments (tenant_id, channel_id, thread_timestamp, comment_id) VALUES ($1, $2, $3, $4)`
+	_, err := c.db.ExecContext(ctx, q, tenantID, channelID, timestamp, commentID)
 	return err
 }
 
@@ -213,7 +180,7 @@ type tenantStore struct {
 	db *sql.DB
 }
 
-var _ spreche.TenantStore = &tenantStore{}
+var _ spreche.TenantStore = tenantStore{}
 
 func (t tenantStore) WithTenant(ctx context.Context, tenantID int64, repoURL, teamID string, f func(context.Context, *spreche.Tenant) error) error {
 	const (
@@ -251,7 +218,7 @@ func (t tenantStore) WithTenant(ctx context.Context, tenantID int64, repoURL, te
 
 	var tenant spreche.Tenant
 
-	err := t.db.QueryRowContext(pgtenant.Suppress(ctx), q, arg).Scan(
+	err := t.db.QueryRowContext(ctx, q, arg).Scan(
 		&tenant.TenantID,
 		&tenant.GHInstallationID,
 		&tenant.GHPrivKey,
@@ -263,33 +230,60 @@ func (t tenantStore) WithTenant(ctx context.Context, tenantID int64, repoURL, te
 		return errors.Wrap(err, "getting tenant")
 	}
 
-	ctx = pgtenant.WithTenantID(ctx, tenant.TenantID)
 	return f(ctx, &tenant)
 }
 
-func (t *tenantStore) Add(ctx context.Context, vals *spreche.Tenant) error {
+func (t tenantStore) Add(ctx context.Context, vals *spreche.Tenant) error {
 	const q = `INSERT INTO tenants (gh_installation_id, gh_priv_key, gh_api_url, gh_upload_url, slack_token) VALUES ($1, $2, $3, $4, $5)`
 	res, err := t.db.ExecContext(ctx, q, vals.GHInstallationID, vals.GHPrivKey, vals.GHAPIURL, vals.GHUploadURL, vals.SlackToken)
 	if err != nil {
 		return errors.Wrap(err, "inserting tenant row")
 	}
 	vals.TenantID, err = res.LastInsertId()
-	return errors.Wrap(err, "getting last insert ID")
+	if err != nil {
+		return errors.Wrap(err, "getting last insert ID")
+	}
+
+	if len(vals.RepoURLs) > 0 {
+		const qInsFmt = `INSERT INTO tenant_repos (tenant_id, repo_url) VALUES %s`
+		strs, _ := slices.Map(vals.RepoURLs, func(_ int, s string) (string, error) {
+			return fmt.Sprintf("(%d, %s)", vals.TenantID, pq.QuoteLiteral(s)), nil
+		})
+		qIns := fmt.Sprintf(qInsFmt, strings.Join(strs, ", "))
+		_, err = t.db.ExecContext(ctx, qIns)
+		if err != nil {
+			return errors.Wrap(err, "adding repo URLs")
+		}
+	}
+
+	if len(vals.TeamIDs) > 0 {
+		const qInsFmt = `INSERT INTO tenant_teams (tenant_id, team_id) VALUES %s`
+		strs, _ := slices.Map(vals.TeamIDs, func(_ int, s string) (string, error) {
+			return fmt.Sprintf("(%d, %s)", vals.TenantID, pq.QuoteLiteral(s)), nil
+		})
+		qIns := fmt.Sprintf(qInsFmt, strings.Join(strs, ", "))
+		_, err = t.db.ExecContext(ctx, qIns)
+		if err != nil {
+			return errors.Wrap(err, "adding team IDs")
+		}
+	}
+
+	return nil
 }
 
-func (t *tenantStore) AddRepo(ctx context.Context, tenantID int64, repoURL string) error {
+func (t tenantStore) AddRepo(ctx context.Context, tenantID int64, repoURL string) error {
 	const q = `INSERT INTO tenant_repos (tenant_id, repo_url) VALUES ($1, $2)`
 	_, err := t.db.ExecContext(ctx, q, tenantID, repoURL)
 	return err
 }
 
-func (t *tenantStore) AddTeam(ctx context.Context, tenantID int64, teamID string) error {
+func (t tenantStore) AddTeam(ctx context.Context, tenantID int64, teamID string) error {
 	const q = `INSERT INTO tenant_teams (tenant_id, team_id) VALUES ($1, $2)`
 	_, err := t.db.ExecContext(ctx, q, tenantID, teamID)
 	return err
 }
 
-func (t *tenantStore) Foreach(ctx context.Context, f func(*spreche.Tenant) error) error {
+func (t tenantStore) Foreach(ctx context.Context, f func(*spreche.Tenant) error) error {
 	const q = `SELECT tenant_id, gh_installation_id, gh_priv_key, gh_api_url, gh_upload_url, slack_token FROM tenants`
 	return sqlutil.ForQueryRows(ctx, t.db, q, func(tenantID, ghInstallationID int64, ghPrivKey []byte, ghAPIURL, ghUploadURL, slackToken string) error {
 		var tenant = &spreche.Tenant{
@@ -300,7 +294,23 @@ func (t *tenantStore) Foreach(ctx context.Context, f func(*spreche.Tenant) error
 			GHUploadURL:      ghUploadURL,
 			SlackToken:       slackToken,
 		}
-		// xxx add repos and teams
+
+		const qRepos = `SELECT repo_url FROM tenant_repos WHERE tenant_id = $1`
+		err := sqlutil.ForQueryRows(ctx, t.db, qRepos, tenantID, func(repoURL string) {
+			tenant.RepoURLs = append(tenant.RepoURLs, repoURL)
+		})
+		if err != nil {
+			return errors.Wrap(err, "getting repo URLs")
+		}
+
+		const qTeams = `SELECT team_id FROM tenant_teams WHERE tenant_id = $1`
+		err = sqlutil.ForQueryRows(ctx, t.db, qTeams, tenantID, func(teamID string) {
+			tenant.TeamIDs = append(tenant.TeamIDs, teamID)
+		})
+		if err != nil {
+			return errors.Wrap(err, "getting team IDs")
+		}
+
 		return f(tenant)
 	})
 }
@@ -309,34 +319,34 @@ type userStore struct {
 	db *sql.DB
 }
 
-var _ spreche.UserStore = &userStore{}
+var _ spreche.UserStore = userStore{}
 
-func (u userStore) BySlackID(ctx context.Context, slackID string) (*spreche.User, error) {
-	const q = `SELECT github_name FROM users WHERE slack_id = $1`
+func (u userStore) BySlackID(ctx context.Context, tenantID int64, slackID string) (*spreche.User, error) {
+	const q = `SELECT github_name FROM users WHERE tenant_id = $1 AND slack_id = $2`
 	result := &spreche.User{
 		SlackID: slackID,
 	}
-	err := u.db.QueryRowContext(ctx, q, slackID).Scan(&result.GithubName)
+	err := u.db.QueryRowContext(ctx, q, tenantID, slackID).Scan(&result.GithubName)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = spreche.ErrNotFound
 	}
 	return result, err
 }
 
-func (u userStore) ByGithubName(ctx context.Context, githubName string) (*spreche.User, error) {
-	const q = `SELECT slack_id FROM users WHERE github_name = $1`
+func (u userStore) ByGithubName(ctx context.Context, tenantID int64, githubName string) (*spreche.User, error) {
+	const q = `SELECT slack_id FROM users WHERE tenant_id = $1 AND github_name = $2`
 	result := &spreche.User{
 		GithubName: githubName,
 	}
-	err := u.db.QueryRowContext(ctx, q, githubName).Scan(&result.SlackID)
+	err := u.db.QueryRowContext(ctx, q, tenantID, githubName).Scan(&result.SlackID)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = spreche.ErrNotFound
 	}
 	return result, err
 }
 
-func (u userStore) Add(ctx context.Context, user *spreche.User) error {
-	const q = `INSERT INTO users (slack_id, github_name) VALUES ($1, $2)`
-	_, err := u.db.ExecContext(ctx, q, user.SlackID, user.GithubName)
+func (u userStore) Add(ctx context.Context, tenantID int64, user *spreche.User) error {
+	const q = `INSERT INTO users (tenant_id, slack_id, github_name) VALUES ($1, $2, $3)`
+	_, err := u.db.ExecContext(ctx, q, tenantID, user.SlackID, user.GithubName)
 	return err
 }

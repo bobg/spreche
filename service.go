@@ -26,15 +26,15 @@ type Service struct {
 var ErrNotFound = errors.New("not found")
 
 type ChannelStore interface {
-	Add(ctx context.Context, channelID string, repo *github.Repository, pr int) error
-	ByChannelID(context.Context, string) (*Channel, error)
-	ByRepoPR(context.Context, *github.Repository, int) (*Channel, error)
+	Add(ctx context.Context, tenantID int64, channelID string, repo *github.Repository, pr int) error
+	ByChannelID(context.Context, int64, string) (*Channel, error)
+	ByRepoPR(context.Context, int64, *github.Repository, int) (*Channel, error)
 }
 
 type CommentStore interface {
-	ByCommentID(ctx context.Context, channelID string, commentID int64) (*Comment, error)
-	ByThreadTimestamp(ctx context.Context, channelID, timestamp string) (*Comment, error)
-	Add(ctx context.Context, channelID, timestamp string, commentID int64) error
+	ByCommentID(ctx context.Context, tenantID int64, channelID string, commentID int64) (*Comment, error)
+	ByThreadTimestamp(ctx context.Context, tenantID int64, channelID, timestamp string) (*Comment, error)
+	Add(ctx context.Context, tenantID int64, channelID, timestamp string, commentID int64) error
 }
 
 type TenantStore interface {
@@ -46,9 +46,9 @@ type TenantStore interface {
 }
 
 type UserStore interface {
-	BySlackID(context.Context, string) (*User, error)
-	ByGithubName(context.Context, string) (*User, error)
-	Add(context.Context, *User) error
+	BySlackID(context.Context, int64, string) (*User, error)
+	ByGithubName(context.Context, int64, string) (*User, error)
+	Add(context.Context, int64, *User) error
 }
 
 type Channel struct {

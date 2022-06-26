@@ -96,12 +96,12 @@ func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Clien
 	return s.Tenants.WithTenant(ctx, 0, "", teamID, func(ctx context.Context, tenant *Tenant) error {
 		sc := tenant.SlackClient()
 
-		channel, err := s.Channels.ByChannelID(ctx, ev.Channel)
+		channel, err := s.Channels.ByChannelID(ctx, tenant.TenantID, ev.Channel)
 		if err != nil {
 			return errors.Wrapf(err, "getting info for channelID %s", ev.Channel)
 		}
 
-		user, err := s.Users.BySlackID(ctx, ev.User)
+		user, err := s.Users.BySlackID(ctx, tenant.TenantID, ev.User)
 		if errors.Is(err, ErrNotFound) {
 			user = nil
 		} else if err != nil {
@@ -135,7 +135,7 @@ func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Clien
 		}
 
 		if ev.ThreadTimeStamp != "" {
-			comment, err := s.Comments.ByThreadTimestamp(ctx, channel.ChannelID, ev.ThreadTimeStamp)
+			comment, err := s.Comments.ByThreadTimestamp(ctx, tenant.TenantID, channel.ChannelID, ev.ThreadTimeStamp)
 			if err != nil {
 				return errors.Wrapf(err, "getting latest comment in thread %s", ev.ThreadTimeStamp)
 			}
@@ -150,7 +150,7 @@ func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Clien
 		if err != nil {
 			return errors.Wrap(err, "creating comment")
 		}
-		return s.Comments.Add(ctx, channel.ChannelID, ev.TimeStamp, *issueComment.ID)
+		return s.Comments.Add(ctx, tenant.TenantID, channel.ChannelID, ev.TimeStamp, *issueComment.ID)
 	})
 }
 

@@ -1,7 +1,7 @@
+github.com/bobg/go-generics v0.4.0 h1:jFxunbQhargut98uOAkqCFpKXTdKyiCz0Oep+dA3YYI=
+github.com/bobg/go-generics v0.4.0/go.mod h1:2c0zc1xzeC52OM0sKB4uUbb/OD90QFpJNIn984TKFBQ=
 github.com/bobg/mid v1.7.0 h1:WQA2dI8EjYUz9r839EjWSICQPqd2p9VwUvQfUsNeAWc=
 github.com/bobg/mid v1.7.0/go.mod h1:0XdctoS8z3lTMHzEyuHDo8vDrbvdbnBQqwPpTacYqc8=
-github.com/bobg/pgtenant v1.0.1 h1:roAywT4YAvBBx3ASZ95KxTQD78Ojd8qu/RVURPyV/wU=
-github.com/bobg/pgtenant v1.0.1/go.mod h1:zYtiNhs7Wpu2glaESDBTdcfAqU4pPFgtMmae7NZZki4=
 github.com/bobg/pgtenant v1.1.0 h1:VgWQJHEUkEiw8xyYfedH7qEskQv96IHyVUCzrCJU2yA=
 github.com/bobg/pgtenant v1.1.0/go.mod h1:zYtiNhs7Wpu2glaESDBTdcfAqU4pPFgtMmae7NZZki4=
 github.com/bobg/sqlutil v1.0.0 h1:UYyM8pNLsEYPINtH717SEXo/th9B6hQOKzUBTN4ApgA=

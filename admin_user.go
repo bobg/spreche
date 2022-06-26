@@ -8,11 +8,14 @@ import (
 
 func (a admincmd) doUser(ctx context.Context, tenantID int64, args []string) error {
 	return a.s.Tenants.WithTenant(ctx, tenantID, "", "", func(ctx context.Context, tenant *Tenant) error {
-		return subcmd.Run(ctx, usercmd{s: a.s}, args)
+		return subcmd.Run(ctx, usercmd{s: a.s, tenant: tenant}, args)
 	})
 }
 
-type usercmd struct{ s *Service }
+type usercmd struct {
+	s      *Service
+	tenant *Tenant
+}
 
 func (u usercmd) Subcmds() subcmd.Map {
 	return subcmd.Commands(
@@ -31,7 +34,7 @@ func (u usercmd) Subcmds() subcmd.Map {
 }
 
 func (u usercmd) doAdd(ctx context.Context, slackID, githubLogin string, _ []string) error {
-	return u.s.Users.Add(ctx, &User{
+	return u.s.Users.Add(ctx, u.tenant.TenantID, &User{
 		SlackID:    slackID,
 		GithubName: githubLogin,
 	})
