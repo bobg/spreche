@@ -110,7 +110,7 @@ func (c channelStore) Add(ctx context.Context, tenantID int64, channelID string,
 }
 
 func (c channelStore) ByChannelID(ctx context.Context, tenantID int64, channelID string) (*spreche.Channel, error) {
-	const q = `SELECT owner, repo, pr FROM channels WHERE tenant_id = $2 AND channel_id = $2`
+	const q = `SELECT owner, repo, pr FROM channels WHERE tenant_id = $1 AND channel_id = $2`
 	result := &spreche.Channel{
 		ChannelID: channelID,
 	}
@@ -189,12 +189,12 @@ func (t tenantStore) WithTenant(ctx context.Context, tenantID int64, repoURL, te
 		qRepo = `
 			SELECT r.tenant_id, t.gh_installation_id, t.gh_priv_key, t.gh_api_url, t.gh_upload_url, t.slack_token
 				FROM tenant_repos r, tenants t
-				WHERE r.tenant_id = t.tenant_id AND t.repo_url = $1
+				WHERE r.tenant_id = t.tenant_id AND r.repo_url = $1
 		`
 		qTeam = `
 			SELECT tt.tenant_id, t.gh_installation_id, t.gh_priv_key, t.gh_api_url, t.gh_upload_url, t.slack_token
 				FROM tenant_teams tt, tenants t
-				WHERE tt.tenant_id = t.tenant_id AND t.team_id = $1
+				WHERE tt.tenant_id = t.tenant_id AND tt.team_id = $1
 		`
 	)
 
