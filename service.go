@@ -39,7 +39,12 @@ type CommentStore interface {
 
 type TenantStore interface {
 	WithTenant(ctx context.Context, tenantID int64, repoURL, teamID string, f func(context.Context, *Tenant) error) error
+
+	// Add adds a new tenant to the store.
+	// The values for the new tenant are in the given *Tenant object.
+	// On a successful return, the TenantID field of the object is populated with the new ID.
 	Add(context.Context, *Tenant) error
+
 	AddRepo(context.Context, int64, string) error
 	AddTeam(context.Context, int64, string) error
 	Foreach(context.Context, func(*Tenant) error) error

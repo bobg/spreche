@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/bobg/subcmd/v2"
 	"github.com/pkg/errors"
@@ -34,7 +35,7 @@ func (tc tenantcmd) Subcmds() subcmd.Map {
 	)
 }
 
-func (tc tenantcmd) doAdd(ctx context.Context, ghinst int64, ghprivfile, ghapi, ghupload, slacktoken string, _ []string) error {
+func (tc tenantcmd) doAdd(ctx context.Context, ghinst int64, ghprivfile, ghapi, ghupload, slacktoken string, args []string) error {
 	ghpriv, err := os.ReadFile(ghprivfile)
 	if err != nil {
 		return errors.Wrap(err, "reading privkey file")
@@ -46,6 +47,15 @@ func (tc tenantcmd) doAdd(ctx context.Context, ghinst int64, ghprivfile, ghapi, 
 		GHUploadURL:      ghupload,
 		SlackToken:       slacktoken,
 	}
+
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "http:") || strings.HasPrefix(arg, "https:") {
+			tenant.RepoURLs = append(tenant.RepoURLs, arg)
+		} else {
+			tenant.TeamIDs = append(tenant.TeamIDs, arg)
+		}
+	}
+
 	err = tc.s.Tenants.Add(ctx, tenant)
 	if err != nil {
 		return errors.Wrap(err, "adding new tenant")
