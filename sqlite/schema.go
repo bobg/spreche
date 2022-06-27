@@ -15,29 +15,29 @@ import (
 
 const schema = `
 CREATE TABLE IF NOT EXISTS channels (
-  tenant_id INT NOT NULL,
+  tenant_id INTEGER NOT NULL,
   channel_id TEXT NOT NULL,
   owner TEXT NOT NULL,
   repo TEXT NOT NULL,
-  pr INT NOT NULL
+  pr INTEGER NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS channel_id_index ON channels (tenant_id, channel_id);
 CREATE UNIQUE INDEX IF NOT EXISTS owner_repo_pr_index ON channels (tenant_id, owner, repo, pr);
 
 CREATE TABLE IF NOT EXISTS comments (
-  tenant_id INT NOT NULL,
+  tenant_id INTEGER NOT NULL,
   channel_id TEXT NOT NULL,
   thread_timestamp TEXT NOT NULL,
-  comment_id INT NOT NULL,
+  comment_id INTEGER NOT NULL,
   PRIMARY KEY (tenant_id, channel_id, thread_timestamp)
 );
 
 CREATE INDEX IF NOT EXISTS channel_comment_index ON comments (tenant_id, channel_id, comment_id);
 
 CREATE TABLE IF NOT EXISTS tenants (
-  tenant_id INT NOT NULL PRIMARY KEY AUTOINCREMENT,
-  gh_installation_id INT NOT NULL,
+  tenant_id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  gh_installation_id INTEGER NOT NULL,
   gh_priv_key BLOB NOT NULL,
   gh_api_url TEXT NOT NULL,
   gh_upload_url TEXT NOT NULL,
@@ -46,16 +46,16 @@ CREATE TABLE IF NOT EXISTS tenants (
 
 CREATE TABLE IF NOT EXISTS tenant_repos (
   repo_url TEXT NOT NULL PRIMARY KEY,
-  tenant_id INT NOT NULL REFERENCES tenants (tenant_id) ON DELETE CASCADE
+  tenant_id INTEGER NOT NULL REFERENCES tenants (tenant_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS tenant_teams (
   team_id TEXT NOT NULL PRIMARY KEY,
-  tenant_id INT NOT NULL REFERENCES tenants (tenant_id) ON DELETE CASCADE
+  tenant_id INTEGER NOT NULL REFERENCES tenants (tenant_id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS users (
-  tenant_id INT NOT NULL,
+  tenant_id INTEGER NOT NULL,
   slack_id TEXT NOT NULL,
   github_name TEXT NOT NULL
 );
