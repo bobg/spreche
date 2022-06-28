@@ -46,24 +46,24 @@ func (maincmd) Subcmds() subcmd.Map {
 }
 
 type config struct {
-	AdminKey             string `yaml:"admin_key"`
-	Certfile             string
-	Database             string
-	GithubPrivateKeyFile string `yaml:"github_private_key_file"`
-	GithubSecret         string `yaml:"github_secret"`
-	GithubAPIURL         string `yaml:"github_api_url"`    // "https://api.github.com/" or "https://HOST/api/v3/"
-	GithubUploadURL      string `yaml:"github_upload_url"` // "https://uploads.github.com/" or "https://HOST/api/uploads/"
-	Keyfile              string
-	Listen               string
-	SlackSigningSecret   string `yaml:"slack_signing_secret"`
-	SlackToken           string `yaml:"slack_token"`
+	AdminKey string `yaml:"admin_key"`
+	Certfile string
+	Database string
+	// GithubPrivateKeyFile string `yaml:"github_private_key_file"`
+	GithubSecret string `yaml:"github_secret"`
+	// GithubAPIURL         string `yaml:"github_api_url"`    // "https://api.github.com/" or "https://HOST/api/v3/"
+	// GithubUploadURL      string `yaml:"github_upload_url"` // "https://uploads.github.com/" or "https://HOST/api/uploads/"
+	Keyfile            string
+	Listen             string
+	SlackSigningSecret string `yaml:"slack_signing_secret"`
+	// SlackToken           string `yaml:"slack_token"`
 }
 
 var defaultConfig = config{
-	Database:        "sqlite3:spreche.db",
-	GithubAPIURL:    "https://api.github.com/",
-	GithubUploadURL: "https://uploads.github.com/",
-	Listen:          ":3853",
+	Database: "sqlite3:spreche.db",
+	// GithubAPIURL:    "https://api.github.com/",
+	// GithubUploadURL: "https://uploads.github.com/",
+	Listen: ":3853",
 }
 
 var portRegex = regexp.MustCompile(`:(\d+)$`)
@@ -101,6 +101,7 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 		defer stores.Close()
 		s.Channels = stores.Channels
 		s.Comments = stores.Comments
+		s.Tenants = stores.Tenants
 		s.Users = stores.Users
 
 	case "postgresql":
@@ -111,6 +112,7 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 		defer stores.Close()
 		s.Channels = stores.Channels
 		s.Comments = stores.Comments
+		s.Tenants = stores.Tenants
 		s.Users = stores.Users
 
 	default:

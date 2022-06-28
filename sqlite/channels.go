@@ -24,7 +24,7 @@ func (c channelStore) Add(ctx context.Context, tenantID int64, channelID string,
 }
 
 func (c channelStore) ByChannelID(ctx context.Context, tenantID int64, channelID string) (*spreche.Channel, error) {
-	const q = `SELECT owner, repo, pr FROM channels WHERE tenant_id = $2 AND channel_id = $2`
+	const q = `SELECT owner, repo, pr FROM channels WHERE tenant_id = $1 AND channel_id = $2`
 	result := &spreche.Channel{
 		ChannelID: channelID,
 	}
