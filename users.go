@@ -11,16 +11,18 @@ func (s *Service) GHToSlackUsers(ctx context.Context, tenantID int64, ghUsers []
 	var result []string
 
 	for _, ghUser := range ghUsers {
-		if ghUser == nil || ghUser.Name == nil {
+		if ghUser == nil || ghUser.Login == nil {
 			continue
 		}
-		u, err := s.Users.ByGithubName(ctx, tenantID, *ghUser.Name)
+		u, err := s.Users.ByGHLogin(ctx, tenantID, *ghUser.Login)
 		if errors.Is(err, ErrNotFound) {
+			debugf("No Slack user found for GitHub user %s", *ghUser.Login)
 			continue
 		}
 		if err != nil {
-			return nil, errors.Wrapf(err, "looking up user %s", *ghUser.Name)
+			return nil, errors.Wrapf(err, "looking up user %s", *ghUser.Login)
 		}
+		debugf("Found Slack user %s for GitHub user %s", u.SlackID, *ghUser.Login)
 		result = append(result, u.SlackID)
 	}
 

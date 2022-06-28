@@ -3,6 +3,7 @@ package spreche
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -52,7 +53,7 @@ type TenantStore interface {
 
 type UserStore interface {
 	BySlackID(context.Context, int64, string) (*User, error)
-	ByGithubName(context.Context, int64, string) (*User, error)
+	ByGHLogin(context.Context, int64, string) (*User, error)
 	Add(context.Context, int64, *User) error
 }
 
@@ -96,8 +97,8 @@ func (t *Tenant) SlackClient() *slack.Client {
 }
 
 type User struct {
-	SlackID    string
-	GithubName string
+	SlackID string
+	GHLogin string
 }
 
 func ChannelName(repo *github.Repository, prnum int) string {
@@ -108,4 +109,8 @@ func ChannelName(repo *github.Repository, prnum int) string {
 		name  = strings.ToLower(*repo.Name)
 	)
 	return fmt.Sprintf("pr-%s-%s-%d", owner, name, prnum)
+}
+
+func debugf(format string, args ...any) {
+	log.Printf(format, args...)
 }

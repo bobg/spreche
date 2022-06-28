@@ -45,6 +45,8 @@ func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 		teamID := ev.TeamID
 
 		return s.Tenants.WithTenant(ctx, 0, "", teamID, func(ctx context.Context, tenant *Tenant) error {
+			debugf("In OnSlackEvent, tenant ID %d", tenant.TenantID)
+
 			gh, err := tenant.GHClient()
 			if err != nil {
 				return errors.Wrap(err, "getting GitHub client")
@@ -103,9 +105,12 @@ func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Clien
 
 		user, err := s.Users.BySlackID(ctx, tenant.TenantID, ev.User)
 		if errors.Is(err, ErrNotFound) {
+			debugf("Found no GitHub user for slack ID %s", ev.User)
 			user = nil
 		} else if err != nil {
 			return errors.Wrapf(err, "getting info for userID %s", ev.User)
+		} else {
+			debugf("Found GitHub user %s for slack ID %s", user.GHLogin, ev.User)
 		}
 
 		slackUser, err := sc.GetUserInfoContext(ctx, ev.User)
@@ -131,7 +136,7 @@ func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Clien
 
 		var ghuser *github.User
 		if user != nil {
-			ghuser = &github.User{Login: &user.GithubName}
+			ghuser = &github.User{Login: &user.GHLogin}
 		}
 
 		if ev.ThreadTimeStamp != "" {
@@ -139,9 +144,12 @@ func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Clien
 			if err != nil {
 				return errors.Wrapf(err, "getting latest comment in thread %s", ev.ThreadTimeStamp)
 			}
+			debugf("Creating comment (%s/%s/%d) in reply to %d", channel.Owner, channel.Repo, channel.PR, comment.CommentID)
 			_, _, err = gh.PullRequests.CreateCommentInReplyTo(ctx, channel.Owner, channel.Repo, channel.PR, body, comment.CommentID)
 			return errors.Wrap(err, "creating comment")
 		}
+
+		debugf("Creating new top-level comment (%s/%s/%d)", channel.Owner, channel.Repo, channel.PR)
 
 		issueComment, _, err := gh.Issues.CreateComment(ctx, channel.Owner, channel.Repo, channel.PR, &github.IssueComment{
 			Body: &body,
@@ -150,6 +158,7 @@ func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Clien
 		if err != nil {
 			return errors.Wrap(err, "creating comment")
 		}
+
 		return s.Comments.Add(ctx, tenant.TenantID, channel.ChannelID, ev.TimeStamp, *issueComment.ID)
 	})
 }

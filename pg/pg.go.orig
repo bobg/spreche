@@ -322,17 +322,17 @@ func (u userStore) BySlackID(ctx context.Context, tenantID int64, slackID string
 	result := &spreche.User{
 		SlackID: slackID,
 	}
-	err := u.db.QueryRowContext(ctx, q, tenantID, slackID).Scan(&result.GithubName)
+	err := u.db.QueryRowContext(ctx, q, tenantID, slackID).Scan(&result.GHLogin)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = spreche.ErrNotFound
 	}
 	return result, err
 }
 
-func (u userStore) ByGithubName(ctx context.Context, tenantID int64, githubName string) (*spreche.User, error) {
+func (u userStore) ByGHLogin(ctx context.Context, tenantID int64, githubName string) (*spreche.User, error) {
 	const q = `SELECT slack_id FROM users WHERE tenant_id = $1 AND github_name = $2`
 	result := &spreche.User{
-		GithubName: githubName,
+		GHLogin: githubName,
 	}
 	err := u.db.QueryRowContext(ctx, q, tenantID, githubName).Scan(&result.SlackID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -343,7 +343,7 @@ func (u userStore) ByGithubName(ctx context.Context, tenantID int64, githubName 
 
 func (u userStore) Add(ctx context.Context, tenantID int64, user *spreche.User) error {
 	const q = `INSERT INTO users (tenant_id, slack_id, github_name) VALUES ($1, $2, $3)`
-	_, err := u.db.ExecContext(ctx, q, tenantID, user.SlackID, user.GithubName)
+	_, err := u.db.ExecContext(ctx, q, tenantID, user.SlackID, user.GHLogin)
 	return err
 }
 >>>>>>> be528c2ce8fa1767874fedb06e38b0e8bd809ba6

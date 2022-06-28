@@ -54,11 +54,11 @@ CREATE TABLE IF NOT EXISTS tenant_teams (
 CREATE TABLE IF NOT EXISTS users (
   tenant_id INTEGER NOT NULL,
   slack_id TEXT NOT NULL,
-  github_name TEXT NOT NULL
+  github_login TEXT NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS slack_id_index ON users (tenant_id, slack_id);
-CREATE UNIQUE INDEX IF NOT EXISTS github_name_index ON users (tenant_id, github_name);
+CREATE UNIQUE INDEX IF NOT EXISTS github_login_index ON users (tenant_id, github_login);
 `
 
 type Stores struct {

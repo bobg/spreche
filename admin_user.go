@@ -35,7 +35,7 @@ func (u usercmd) Subcmds() subcmd.Map {
 
 func (u usercmd) doAdd(ctx context.Context, slackID, githubLogin string, _ []string) error {
 	return u.s.Users.Add(ctx, u.tenant.TenantID, &User{
-		SlackID:    slackID,
-		GithubName: githubLogin,
+		SlackID: slackID,
+		GHLogin: githubLogin,
 	})
 }

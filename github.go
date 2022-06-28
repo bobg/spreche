@@ -41,6 +41,8 @@ func (s *Service) OnGHWebhook(w http.ResponseWriter, req *http.Request) error {
 
 func (s *Service) OnPR(ctx context.Context, ev *github.PullRequestEvent) error {
 	return s.Tenants.WithTenant(ctx, 0, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
+		debugf("In OnPR, tenantID is %d", tenant.TenantID)
+
 		switch ev.GetAction() {
 		case "opened":
 			return s.PROpened(ctx, tenant, ev)
@@ -93,6 +95,8 @@ func (s *Service) PROpened(ctx context.Context, tenant *Tenant, ev *github.PullR
 		return errors.Wrapf(err, "creating channel %s", chname)
 	}
 
+	debugf("Created channel %s, ID %s", chname, ch.ID)
+
 	err = s.Channels.Add(ctx, tenant.TenantID, ch.ID, repo, *pr.Number)
 	if err != nil {
 		return errors.Wrapf(err, "storing info for channel %s", chname)
@@ -143,6 +147,8 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 		return nil
 	}
 	return s.Tenants.WithTenant(ctx, 0, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
+		debugf("In OnPRReview, tenant ID %d", tenant.TenantID)
+
 		sc := tenant.SlackClient()
 		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
 		if err != nil {
@@ -174,14 +180,14 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 		}
 
 		options := []slack.MsgOption{slack.MsgOptionBlocks(blocks...)}
-		u, err := s.Users.ByGithubName(ctx, tenant.TenantID, *ev.Review.User.Login)
+		u, err := s.Users.ByGHLogin(ctx, tenant.TenantID, *ev.Review.User.Login)
 		switch {
 		case errors.Is(err, ErrNotFound):
 			// do nothing
 		case err != nil:
 			return errors.Wrapf(err, "looking up user %s", *ev.Review.User.Login)
 		default:
-			options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
+			options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx ?
 		}
 		_, _, err = sc.PostMessageContext(ctx, channel.ChannelID, options...)
 		return errors.Wrap(err, "posting message")
@@ -196,7 +202,8 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 		return nil
 	}
 	return s.Tenants.WithTenant(ctx, 0, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
-		sc := tenant.SlackClient()
+		debugf("In OnPRReviewComment, tenant ID %d", tenant.TenantID)
+
 		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
 		if err != nil {
 			return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.HTMLURL)
@@ -249,7 +256,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 			),
 		}
 		options = append(options, slack.MsgOptionBlocks(blocks...))
-		u, err := s.Users.ByGithubName(ctx, tenant.TenantID, *ev.Comment.User.Login)
+		u, err := s.Users.ByGHLogin(ctx, tenant.TenantID, *ev.Comment.User.Login)
 		switch {
 		case errors.Is(err, ErrNotFound):
 			fmt.Printf("xxx did not find entry for GitHub user %s\n", *ev.Comment.User.Login)
@@ -261,6 +268,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 			options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
 		}
 
+		sc := tenant.SlackClient()
 		_, timestamp, err := sc.PostMessageContext(ctx, channel.ChannelID, options...)
 		if err != nil {
 			return errors.Wrap(err, "posting message")
