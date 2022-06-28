@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/bobg/mid"
 	"github.com/bobg/subcmd/v2"
 	"github.com/pkg/errors"
 )
@@ -60,7 +61,9 @@ func (tc tenantcmd) doAdd(ctx context.Context, ghinst int64, ghprivfile, ghapi, 
 	if err != nil {
 		return errors.Wrap(err, "adding new tenant")
 	}
-	fmt.Printf("New tenant ID %d\n", tenant.TenantID)
+
+	w := mid.ResponseWriter(ctx)
+	fmt.Fprintf(w, "New tenant ID %d\n", tenant.TenantID)
 	return nil
 }
 
@@ -82,7 +85,8 @@ func (tc tenantcmd) doAddTo(ctx context.Context, tenantID int64, repoURL, teamID
 
 func (tc tenantcmd) doList(ctx context.Context, _ []string) error {
 	return tc.s.Tenants.Foreach(ctx, func(t *Tenant) error {
-		enc := json.NewEncoder(os.Stdout)
+		w := mid.ResponseWriter(ctx)
+		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
 		return enc.Encode(t)
 	})
