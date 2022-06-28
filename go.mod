@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/bobg/go-generics v0.4.0
 	github.com/bobg/mid v1.7.0
-	github.com/bobg/sqlutil v1.0.0
+	github.com/bobg/sqlutil v1.1.0
 	github.com/bobg/subcmd/v2 v2.0.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.0.4
 	github.com/google/go-github/v45 v45.1.0
