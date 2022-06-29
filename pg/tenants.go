@@ -23,7 +23,7 @@ var _ spreche.TenantStore = tenantStore{}
 func (t tenantStore) WithTenant(ctx context.Context, tenantID int64, repoURL, teamID string, f func(context.Context, *spreche.Tenant) error) error {
 	const (
 		qTenantID = `
-			SELECT gh_installation_id, gh_priv_key, gh_api_url, gh_upload_url, slack_token
+			SELECT tenant_id, gh_installation_id, gh_priv_key, gh_api_url, gh_upload_url, slack_token
 				FROM tenants
 				WHERE tenant_id = $1
 		`

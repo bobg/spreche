@@ -30,7 +30,7 @@ func (c commentStore) ByCommentID(ctx context.Context, tenantID int64, channelID
 }
 
 func (c commentStore) ByThreadTimestamp(ctx context.Context, tenantID int64, channelID, timestamp string) (*spreche.Comment, error) {
-	const q = `SELECT comment_id FROM comments WHERE tenant_id = $1 channel_id = $2 AND thread_timestamp = $3`
+	const q = `SELECT comment_id FROM comments WHERE tenant_id = $1 AND channel_id = $2 AND thread_timestamp = $3`
 	result := &spreche.Comment{
 		ChannelID:       channelID,
 		ThreadTimestamp: timestamp,
