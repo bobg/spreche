@@ -14,12 +14,8 @@ import (
 	"strings"
 
 	"github.com/bobg/mid"
-	"github.com/bobg/pgtenant"
 	"github.com/bobg/subcmd/v2"
-	"github.com/bradleyfalzon/ghinstallation/v2"
-	"github.com/google/go-github/v45/github"
 	"github.com/pkg/errors"
-	"github.com/slack-go/slack"
 	"gopkg.in/yaml.v3"
 
 	"spreche"
@@ -50,32 +46,27 @@ func (maincmd) Subcmds() subcmd.Map {
 }
 
 type config struct {
-	AdminKey             string `yaml:"admin_key"`
-	Certfile             string
-	Database             string
-	GithubPrivateKeyFile string `yaml:"github_private_key_file"`
-	GithubSecret         string `yaml:"github_secret"`
-	GithubAPIURL         string `yaml:"github_api_url"`    // "https://api.github.com/" or "https://HOST/api/v3/"
-	GithubUploadURL      string `yaml:"github_upload_url"` // "https://uploads.github.com/" or "https://HOST/api/uploads/"
-	Keyfile              string
-	Listen               string
-	SlackSigningSecret   string `yaml:"slack_signing_secret"`
-	SlackToken           string `yaml:"slack_token"`
+	AdminKey string `yaml:"admin_key"`
+	Certfile string
+	Database string
+	// GithubPrivateKeyFile string `yaml:"github_private_key_file"`
+	GithubSecret string `yaml:"github_secret"`
+	// GithubAPIURL         string `yaml:"github_api_url"`    // "https://api.github.com/" or "https://HOST/api/v3/"
+	// GithubUploadURL      string `yaml:"github_upload_url"` // "https://uploads.github.com/" or "https://HOST/api/uploads/"
+	Keyfile            string
+	Listen             string
+	SlackSigningSecret string `yaml:"slack_signing_secret"`
+	// SlackToken           string `yaml:"slack_token"`
 }
 
 var defaultConfig = config{
-	Database:        "sqlite3:spreche.db",
-	GithubAPIURL:    "https://api.github.com/",
-	GithubUploadURL: "https://uploads.github.com/",
-	Listen:          ":3853",
+	Database: "sqlite3:spreche.db",
+	// GithubAPIURL:    "https://api.github.com/",
+	// GithubUploadURL: "https://uploads.github.com/",
+	Listen: ":3853",
 }
 
 var portRegex = regexp.MustCompile(`:(\d+)$`)
-
-const (
-	ghAppID          = 207677 // https://github.com/settings/apps/spreche
-	ghInstallationID = 17
-)
 
 func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) error {
 	f, err := os.Open(configPath)
@@ -90,26 +81,11 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 		return errors.Wrap(err, "parsing config file")
 	}
 
-	itr, err := ghinstallation.NewKeyFromFile(http.DefaultTransport, ghAppID, ghInstallationID, c.GithubPrivateKeyFile)
-	if err != nil {
-		return errors.Wrapf(err, "reading GitHub private key from %s", c.GithubPrivateKeyFile)
+	s := spreche.Service{
+		AdminKey:           c.AdminKey,
+		GHSecret:           c.GithubSecret,
+		SlackSigningSecret: c.SlackSigningSecret,
 	}
-	itr.BaseURL = c.GithubAPIURL
-
-	ghClient, err := github.NewEnterpriseClient(c.GithubAPIURL, c.GithubUploadURL, &http.Client{Transport: itr})
-	if err != nil {
-		return errors.Wrapf(err, "creating GitHub client")
-	}
-
-	slackClient := slack.New(c.SlackToken)
-
-	s, err := spreche.NewService(ctx, ghClient, slackClient)
-	if err != nil {
-		return errors.Wrap(err, "creating service object")
-	}
-	s.AdminKey = c.AdminKey
-	s.GHSecret = c.GithubSecret
-	s.SlackSigningSecret = c.SlackSigningSecret
 
 	dbparts := strings.SplitN(c.Database, ":", 2)
 	if len(dbparts) < 2 {
@@ -125,6 +101,7 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 		defer stores.Close()
 		s.Channels = stores.Channels
 		s.Comments = stores.Comments
+		s.Tenants = stores.Tenants
 		s.Users = stores.Users
 
 	case "postgresql":
@@ -135,11 +112,8 @@ func doServe(ctx context.Context, configPath string, ngrok bool, _ []string) err
 		defer stores.Close()
 		s.Channels = stores.Channels
 		s.Comments = stores.Comments
+		s.Tenants = stores.Tenants
 		s.Users = stores.Users
-
-		// TODO: This is a placeholder to make the pgtenant logic work.
-		// Real multitenancy will involve switching on data in the incoming requests.
-		ctx = pgtenant.WithTenantID(ctx, 1)
 
 	default:
 		return fmt.Errorf("unknown database type %s", dbparts[0])
@@ -221,8 +195,6 @@ func doAdmin(ctx context.Context, url, key string, args []string) error {
 	}
 	defer resp.Body.Close()
 	log.Printf("Response: %s", resp.Status)
-	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		io.Copy(os.Stdout, resp.Body)
-	}
-	return nil
+	_, err = io.Copy(os.Stdout, resp.Body)
+	return err
 }

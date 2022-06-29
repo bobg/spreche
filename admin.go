@@ -36,7 +36,10 @@ func (s *Service) OnAdmin(httpServer *http.Server, ch chan struct{}) func(contex
 func (a admincmd) Subcmds() subcmd.Map {
 	return subcmd.Commands(
 		"shutdown", a.doShutdown, "shut down", nil,
-		"user", a.doUser, "manage users", nil,
+		"user", a.doUser, "manage users", subcmd.Params(
+			"-tenant", subcmd.Int64, 0, "tenant ID",
+		),
+		"tenant", a.doTenant, "manage tenants", nil,
 	)
 }
 
