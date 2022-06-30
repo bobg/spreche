@@ -7,6 +7,17 @@ import (
 	"github.com/pkg/errors"
 )
 
+type UserStore interface {
+	BySlackID(context.Context, int64, string) (*User, error)
+	ByGHLogin(context.Context, int64, string) (*User, error)
+	Add(context.Context, int64, *User) error
+}
+
+type User struct {
+	SlackID string
+	GHLogin string
+}
+
 func (s *Service) GHToSlackUsers(ctx context.Context, tenantID int64, ghUsers []*github.User) ([]string, error) {
 	var result []string
 
