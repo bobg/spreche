@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/go-github/github"
+	"github.com/google/go-github/v45/github"
 )
 
 // ChannelStore is the type of a persistent store for Channels.

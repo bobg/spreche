@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS tenants (
 
 CREATE TABLE IF NOT EXISTS tenant_repos (
   tenant_id INT NOT NULL REFERENCES tenants (tenant_id) ON DELETE CASCADE,
-  repo_url TEXT NOT NULL PRIMARY KEY
+  gh_url TEXT NOT NULL PRIMARY KEY
 );
 
 CREATE TABLE IF NOT EXISTS tenant_teams (

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"embed"
 
+	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/pressly/goose/v3"
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
+	"path"
 
 	"github.com/bobg/sqlutil"
 	"github.com/pkg/errors"
@@ -37,14 +39,16 @@ func (t tenantStore) WithTenant(ctx context.Context, tenantID int64, repoURL, te
 	)
 
 	var (
-		q   string
-		arg any
+		q      string
+		arg    any
+		isRepo bool
 	)
 	switch {
 	case tenantID != 0:
 		q, arg = qTenantID, tenantID
 	case repoURL != "":
 		q, arg = qRepo, repoURL
+		isRepo = true
 	case teamID != "":
 		q, arg = qTeam, teamID
 	default:
@@ -61,6 +65,35 @@ func (t tenantStore) WithTenant(ctx context.Context, tenantID int64, repoURL, te
 		&tenant.GHUploadURL,
 		&tenant.SlackToken,
 	)
+	if isRepo && errors.Is(err, sql.ErrNoRows) {
+		u, err := url.Parse(repoURL)
+		if err != nil {
+			return errors.Wrapf(err, "parsing URL %s", repoURL)
+		}
+		u.Path = path.Dir(u.Path)
+		err = sqlutil.QueryRowContext(ctx, t.db, q, u.String()).Scan(
+			&tenant.TenantID,
+			&tenant.GHInstallationID,
+			&tenant.GHPrivKey,
+			&tenant.GHAPIURL,
+			&tenant.GHUploadURL,
+			&tenant.SlackToken,
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			// One more time.
+			u.Path = path.Dir(u.Path)
+			err = sqlutil.QueryRowContext(ctx, t.db, q, u.String()).Scan(
+				&tenant.TenantID,
+				&tenant.GHInstallationID,
+				&tenant.GHPrivKey,
+				&tenant.GHAPIURL,
+				&tenant.GHUploadURL,
+				&tenant.SlackToken,
+			)
+			// Fall through to the err check below.
+		}
+		// Fall through to the err check below.
+	}
 	if err != nil {
 		return errors.Wrap(err, "getting tenant")
 	}
@@ -78,10 +111,10 @@ func (t tenantStore) Add(ctx context.Context, vals *spreche.Tenant) error {
 		return errors.Wrap(err, "getting last insert ID")
 	}
 
-	for _, repoURL := range vals.RepoURLs {
-		err = t.AddRepo(ctx, vals.TenantID, repoURL)
+	for _, ghURL := range vals.GHURLs {
+		err = t.AddGHURL(ctx, vals.TenantID, ghURL)
 		if err != nil {
-			return errors.Wrap(err, "adding repo URLs")
+			return errors.Wrap(err, "adding GitHub URLs")
 		}
 	}
 
@@ -95,9 +128,9 @@ func (t tenantStore) Add(ctx context.Context, vals *spreche.Tenant) error {
 	return nil
 }
 
-func (t tenantStore) AddRepo(ctx context.Context, tenantID int64, repoURL string) error {
-	const q = `INSERT INTO tenant_repos (tenant_id, repo_url) VALUES ($1, $2)`
-	_, err := t.db.ExecContext(ctx, q, tenantID, repoURL)
+func (t tenantStore) AddGHURL(ctx context.Context, tenantID int64, ghURL string) error {
+	const q = `INSERT INTO tenant_repos (tenant_id, gh_url) VALUES ($1, $2)`
+	_, err := t.db.ExecContext(ctx, q, tenantID, ghURL)
 	return err
 }
 
@@ -119,12 +152,12 @@ func (t tenantStore) Foreach(ctx context.Context, f func(*spreche.Tenant) error)
 			SlackToken:       slackToken,
 		}
 
-		const qRepos = `SELECT repo_url FROM tenant_repos WHERE tenant_id = $1`
-		err := sqlutil.ForQueryRows(ctx, t.db, qRepos, tenantID, func(repoURL string) {
-			tenant.RepoURLs = append(tenant.RepoURLs, repoURL)
+		const qRepos = `SELECT gh_url FROM tenant_repos WHERE tenant_id = $1`
+		err := sqlutil.ForQueryRows(ctx, t.db, qRepos, tenantID, func(ghURL string) {
+			tenant.GHURLs = append(tenant.GHURLs, ghURL)
 		})
 		if err != nil {
-			return errors.Wrap(err, "getting repo URLs")
+			return errors.Wrap(err, "getting GitHub URLs")
 		}
 
 		const qTeams = `SELECT team_id FROM tenant_teams WHERE tenant_id = $1`
