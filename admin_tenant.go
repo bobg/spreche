@@ -29,8 +29,6 @@ func (tc tenantcmd) Subcmds() subcmd.Map {
 		),
 		"addto", tc.doAddTo, "add a GitHub repo and/or a Slack team to a tenant", subcmd.Params(
 			"-tenant", subcmd.Int64, 0, "tenant ID",
-			"-repo", subcmd.String, "", "GitHub repo URL",
-			"-team", subcmd.String, "", "Slack team ID",
 		),
 		"list", tc.doList, "list tenants", nil,
 	)
@@ -51,7 +49,7 @@ func (tc tenantcmd) doAdd(ctx context.Context, ghinst int64, ghprivfile, ghapi, 
 
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "http:") || strings.HasPrefix(arg, "https:") {
-			tenant.RepoURLs = append(tenant.RepoURLs, arg)
+			tenant.GHURLs = append(tenant.GHURLs, arg)
 		} else {
 			tenant.TeamIDs = append(tenant.TeamIDs, arg)
 		}
@@ -67,17 +65,18 @@ func (tc tenantcmd) doAdd(ctx context.Context, ghinst int64, ghprivfile, ghapi, 
 	return nil
 }
 
-func (tc tenantcmd) doAddTo(ctx context.Context, tenantID int64, repoURL, teamID string, _ []string) error {
-	if repoURL != "" {
-		err := tc.s.Tenants.AddRepo(ctx, tenantID, repoURL)
-		if err != nil {
-			return errors.Wrap(err, "adding repo to tenant")
-		}
-	}
-	if teamID != "" {
-		err := tc.s.Tenants.AddTeam(ctx, tenantID, teamID)
-		if err != nil {
-			return errors.Wrap(err, "adding team to tenant")
+func (tc tenantcmd) doAddTo(ctx context.Context, tenantID int64, args []string) error {
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "http:") || strings.HasPrefix(arg, "https:") {
+			err := tc.s.Tenants.AddGHURL(ctx, tenantID, arg)
+			if err != nil {
+				return errors.Wrapf(err, "adding GH URL %s to tenant", arg)
+			}
+		} else {
+			err := tc.s.Tenants.AddTeam(ctx, tenantID, arg)
+			if err != nil {
+				return errors.Wrapf(err, "adding team ID %s to tenant", arg)
+			}
 		}
 	}
 	return nil
