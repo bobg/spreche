@@ -9,7 +9,7 @@ require (
 	github.com/bobg/subcmd/v2 v2.0.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.0.4
 	github.com/google/go-github/v45 v45.1.0
-	github.com/lib/pq v1.3.0
+	github.com/lib/pq v1.10.6
 	github.com/mattn/go-sqlite3 v1.14.12
 	github.com/pkg/errors v0.9.1
 	github.com/slack-go/slack v0.10.3
@@ -22,5 +22,7 @@ require (
 	github.com/google/go-github/v41 v41.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/pressly/goose v2.7.0+incompatible // indirect
+	github.com/pressly/goose/v3 v3.6.1 // indirect
 	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5 // indirect
 )
