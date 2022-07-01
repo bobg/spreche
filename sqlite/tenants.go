@@ -29,7 +29,7 @@ func (t tenantStore) WithTenant(ctx context.Context, tenantID int64, repoURL, te
 		qRepo = `
 			SELECT r.tenant_id, t.gh_installation_id, t.gh_priv_key, t.gh_api_url, t.gh_upload_url, t.slack_token
 				FROM tenant_repos r, tenants t
-				WHERE r.tenant_id = t.tenant_id AND r.repo_url = $1
+				WHERE r.tenant_id = t.tenant_id AND r.gh_url = $1
 		`
 		qTeam = `
 			SELECT tt.tenant_id, t.gh_installation_id, t.gh_priv_key, t.gh_api_url, t.gh_upload_url, t.slack_token
