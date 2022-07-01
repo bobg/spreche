@@ -9,9 +9,10 @@ require (
 	github.com/bobg/subcmd/v2 v2.0.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.0.4
 	github.com/google/go-github/v45 v45.1.0
-	github.com/lib/pq v1.3.0
+	github.com/lib/pq v1.10.6
 	github.com/mattn/go-sqlite3 v1.14.12
 	github.com/pkg/errors v0.9.1
+	github.com/pressly/goose/v3 v3.6.1
 	github.com/slack-go/slack v0.10.3
 	github.com/yuin/goldmark v1.4.12
 	gopkg.in/yaml.v3 v3.0.1
