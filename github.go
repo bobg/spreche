@@ -162,6 +162,9 @@ func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository
 	if body == nil || *body == "" {
 		return nil
 	}
+	if user != nil && user.Type != nil && *user.Type == "Bot" {
+		return nil
+	}
 	return s.Tenants.WithTenant(ctx, 0, *repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
 		debugf("In onReviewOrComment, tenant ID %d", tenant.TenantID)
 
@@ -178,7 +181,7 @@ func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository
 				"",
 				slack.NewTextBlockObject(
 					"mrkdwn",
-					fmt.Sprintf("<%s|%s> by <%s|%s>", typ, htmlURL, *user.Login, *user.HTMLURL),
+					fmt.Sprintf("<%s|%s> by <%s|%s>", htmlURL, typ, *user.HTMLURL, *user.Login),
 					false,
 					false,
 				),
@@ -195,7 +198,7 @@ func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository
 			),
 		}
 
-		options := []slack.MsgOption{slack.MsgOptionBlocks(blocks...)}
+		options := []slack.MsgOption{slack.MsgOptionBlocks(blocks...), slack.MsgOptionDisableLinkUnfurl()}
 		u, err := s.Users.ByGHLogin(ctx, tenant.TenantID, *user.Login)
 		switch {
 		case errors.Is(err, ErrNotFound):
