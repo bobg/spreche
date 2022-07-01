@@ -29,6 +29,9 @@ func (s *Service) OnGHWebhook(w http.ResponseWriter, req *http.Request) error {
 	case *github.PullRequestReviewEvent:
 		return s.OnPRReview(ctx, ev)
 
+	case *github.IssueCommentEvent:
+		return s.OnIssueComment(ctx, ev)
+
 	case *github.PullRequestReviewCommentEvent:
 		return s.OnPRReviewComment(ctx, ev)
 
@@ -143,16 +146,29 @@ func (s *Service) PROpened(ctx context.Context, tenant *Tenant, ev *github.PullR
 // note: reviews do not get placed in the comment store,
 // unlike review _comments_
 func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEvent) error {
-	if ev.Review.Body == nil || *ev.Review.Body == "" {
+	return s.onReviewOrComment(ctx, ev.Repo, *ev.PullRequest.Number, ev.Review.User, ev.Review.Body, *ev.Review.HTMLURL, "Review")
+}
+
+// note: issue comments do not get placed in the comment store,
+// unlike review comments
+func (s *Service) OnIssueComment(ctx context.Context, ev *github.IssueCommentEvent) error {
+	if ev.Issue.PullRequestLinks == nil {
 		return nil
 	}
-	return s.Tenants.WithTenant(ctx, 0, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
-		debugf("In OnPRReview, tenant ID %d", tenant.TenantID)
+	return s.onReviewOrComment(ctx, ev.Repo, *ev.Issue.Number, ev.Comment.User, ev.Comment.Body, *ev.Comment.HTMLURL, "Comment")
+}
+
+func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository, prnum int, user *github.User, body *string, htmlURL, typ string) error {
+	if body == nil || *body == "" {
+		return nil
+	}
+	return s.Tenants.WithTenant(ctx, 0, *repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
+		debugf("In onReviewOrComment, tenant ID %d", tenant.TenantID)
 
 		sc := tenant.SlackClient()
-		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
+		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, repo, prnum)
 		if err != nil {
-			return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.HTMLURL)
+			return errors.Wrapf(err, "getting channel for PR %d in %s/%s", prnum, *user.Login, *repo.HTMLURL)
 		}
 
 		// xxx ensure channel exists
@@ -162,7 +178,7 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 				"",
 				slack.NewTextBlockObject(
 					"mrkdwn",
-					fmt.Sprintf("<Review|%s> by <%s|%s>", *ev.Review.HTMLURL, *ev.Review.User.Login, *ev.Review.User.HTMLURL),
+					fmt.Sprintf("<%s|%s> by <%s|%s>", typ, htmlURL, *user.Login, *user.HTMLURL),
 					false,
 					false,
 				),
@@ -170,7 +186,7 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 			slack.NewSectionBlock(
 				slack.NewTextBlockObject(
 					"plain_text", // xxx convert GH to Slack markdown
-					*ev.Review.Body,
+					*body,
 					false,
 					false,
 				),
@@ -180,12 +196,12 @@ func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEv
 		}
 
 		options := []slack.MsgOption{slack.MsgOptionBlocks(blocks...)}
-		u, err := s.Users.ByGHLogin(ctx, tenant.TenantID, *ev.Review.User.Login)
+		u, err := s.Users.ByGHLogin(ctx, tenant.TenantID, *user.Login)
 		switch {
 		case errors.Is(err, ErrNotFound):
 			// do nothing
 		case err != nil:
-			return errors.Wrapf(err, "looking up user %s", *ev.Review.User.Login)
+			return errors.Wrapf(err, "looking up user %s", *user.Login)
 		default:
 			options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx ?
 		}
