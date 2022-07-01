@@ -17,7 +17,7 @@ type userStore struct {
 var _ spreche.UserStore = userStore{}
 
 func (u userStore) BySlackID(ctx context.Context, tenantID int64, slackID string) (*spreche.User, error) {
-	const q = `SELECT github_login FROM users WHERE tenant_id = $1 AND slack_id = $2`
+	const q = `SELECT gh_login FROM users WHERE tenant_id = $1 AND slack_id = $2`
 	result := &spreche.User{
 		SlackID: slackID,
 	}
@@ -29,7 +29,7 @@ func (u userStore) BySlackID(ctx context.Context, tenantID int64, slackID string
 }
 
 func (u userStore) ByGHLogin(ctx context.Context, tenantID int64, githubName string) (*spreche.User, error) {
-	const q = `SELECT slack_id FROM users WHERE tenant_id = $1 AND github_login = $2`
+	const q = `SELECT slack_id FROM users WHERE tenant_id = $1 AND gh_login = $2`
 	result := &spreche.User{
 		GHLogin: githubName,
 	}
@@ -41,7 +41,7 @@ func (u userStore) ByGHLogin(ctx context.Context, tenantID int64, githubName str
 }
 
 func (u userStore) Add(ctx context.Context, tenantID int64, user *spreche.User) error {
-	const q = `INSERT INTO users (tenant_id, slack_id, github_login) VALUES ($1, $2, $3)`
+	const q = `INSERT INTO users (tenant_id, slack_id, gh_login) VALUES ($1, $2, $3)`
 	_, err := u.db.ExecContext(ctx, q, tenantID, user.SlackID, user.GHLogin)
 	return err
 }

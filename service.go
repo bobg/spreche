@@ -1,16 +1,12 @@
 package spreche
 
 import (
-	"context"
-	"fmt"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v45/github"
 	"github.com/pkg/errors"
-	"github.com/slack-go/slack"
 )
 
 type Service struct {
@@ -26,61 +22,6 @@ type Service struct {
 
 var ErrNotFound = errors.New("not found")
 
-type ChannelStore interface {
-	Add(ctx context.Context, tenantID int64, channelID string, repo *github.Repository, pr int) error
-	ByChannelID(context.Context, int64, string) (*Channel, error)
-	ByRepoPR(context.Context, int64, *github.Repository, int) (*Channel, error)
-}
-
-type CommentStore interface {
-	ByCommentID(ctx context.Context, tenantID int64, channelID string, commentID int64) (*Comment, error)
-	ByThreadTimestamp(ctx context.Context, tenantID int64, channelID, timestamp string) (*Comment, error)
-	Add(ctx context.Context, tenantID int64, channelID, timestamp string, commentID int64) error
-}
-
-type TenantStore interface {
-	WithTenant(ctx context.Context, tenantID int64, repoURL, teamID string, f func(context.Context, *Tenant) error) error
-
-	// Add adds a new tenant to the store.
-	// The values for the new tenant are in the given *Tenant object.
-	// On a successful return, the TenantID field of the object is populated with the new ID.
-	Add(context.Context, *Tenant) error
-
-	AddRepo(context.Context, int64, string) error
-	AddTeam(context.Context, int64, string) error
-	Foreach(context.Context, func(*Tenant) error) error
-}
-
-type UserStore interface {
-	BySlackID(context.Context, int64, string) (*User, error)
-	ByGHLogin(context.Context, int64, string) (*User, error)
-	Add(context.Context, int64, *User) error
-}
-
-type Channel struct {
-	ChannelID string
-	Owner     string
-	Repo      string
-	PR        int
-}
-
-type Comment struct {
-	ChannelID       string
-	ThreadTimestamp string
-	CommentID       int64
-}
-
-type Tenant struct {
-	TenantID         int64    `json:"tenant_id"`
-	GHInstallationID int64    `json:"gh_installation_id"`
-	GHPrivKey        []byte   `json:"-"`
-	GHAPIURL         string   `json:"gh_api_url"`
-	GHUploadURL      string   `json:"gh_upload_url"`
-	SlackToken       string   `json:"-"`
-	RepoURLs         []string `json:"repo_urls,omitempty"`
-	TeamIDs          []string `json:"team_ids,omitempty"`
-}
-
 const ghAppID = 207677 // https://github.com/settings/apps/spreche
 
 func (t *Tenant) GHClient() (*github.Client, error) {
@@ -90,25 +31,6 @@ func (t *Tenant) GHClient() (*github.Client, error) {
 	}
 	itr.BaseURL = t.GHAPIURL
 	return github.NewEnterpriseClient(t.GHAPIURL, t.GHUploadURL, &http.Client{Transport: itr})
-}
-
-func (t *Tenant) SlackClient() *slack.Client {
-	return slack.New(t.SlackToken)
-}
-
-type User struct {
-	SlackID string
-	GHLogin string
-}
-
-func ChannelName(repo *github.Repository, prnum int) string {
-	// xxx Sanitize strings - only a-z0-9 allowed, plus hyphen and underscore. N.B. no capitals!
-
-	var (
-		owner = strings.ToLower(*repo.Owner.Login)
-		name  = strings.ToLower(*repo.Name)
-	)
-	return fmt.Sprintf("pr-%s-%s-%d", owner, name, prnum)
 }
 
 func debugf(format string, args ...any) {
