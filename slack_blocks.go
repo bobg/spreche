@@ -107,19 +107,47 @@ func richTextElementToGH(w io.Writer, elem slack.RichTextElement) {
 func richTextSectionElementToGH(w io.Writer, elem slack.RichTextSectionElement) {
 	switch elem := elem.(type) {
 	case *slack.RichTextSectionBroadcastElement:
+		styledContentToGH(
+			w,
+			&slack.RichTextSectionTextStyle{Bold: true},
+			func() { fmt.Print(w, elem.Range) },
+		)
+
 	case *slack.RichTextSectionChannelElement:
+		styledContentToGH(
+			w,
+			&slack.RichTextSectionTextStyle{Bold: true},
+			func() { fmt.Print(w, elem.ChannelID) },
+		)
+
 	case *slack.RichTextSectionColorElement:
+		fmt.Fprint(w, elem.Value) // xxx escaping
+
 	case *slack.RichTextSectionDateElement:
+		styledContentToGH(
+			w,
+			&slack.RichTextSectionTextStyle{Italic: true},
+			func() { fmt.Print(w, elem.Timestamp) },
+		)
+
 	case *slack.RichTextSectionEmojiElement:
+		fmt.Fprintf(w, ":%s:", elem.Name)
+
 	case *slack.RichTextSectionLinkElement:
+		fmt.Fprintf(w, "[%s](%s)", elem.Text, elem.URL)
+
 	case *slack.RichTextSectionTeamElement:
+		styledContentToGH(w, elem.Style, func() { fmt.Fprint(w, elem.TeamID) })
+
 	case *slack.RichTextSectionTextElement:
-		styledContentToGH(w, elem.Style, func() {
-			fmt.Fprint(w, elem.Text) // xxx escaping
-		})
+		styledContentToGH(w, elem.Style, func() { fmt.Fprint(w, elem.Text) })
 
 	case *slack.RichTextSectionUserElement:
+		styledContentToGH(w, elem.Style, func() { fmt.Fprint(w, elem.UserID) })
+
 	case *slack.RichTextSectionUserGroupElement:
+		fmt.Fprint(w, elem.UsergroupID) // xxx escaping
+
 	default:
 		fmt.Fprintf(w, "[unknown Slack rich-text-section element type %T (%s)]", elem, elem.RichTextSectionElementType())
 	}
@@ -130,6 +158,15 @@ func textBlockObjectToGH(w io.Writer, obj *slack.TextBlockObject) {
 }
 
 func sectionFieldsToGH(w io.Writer, objs []*slack.TextBlockObject) {
+	for i := 0; i < len(objs); i += 2 {
+		fmt.Fprint(w, "| ")
+		textBlockObjectToGH(w, objs[i])
+		if i+1 < len(objs) {
+			fmt.Fprint(w, " | ")
+			textBlockObjectToGH(w, objs[i+1])
+		}
+		fmt.Fprintln(w, " |")
+	}
 }
 
 func styledContentToGH(w io.Writer, style *slack.RichTextSectionTextStyle, f func()) {
