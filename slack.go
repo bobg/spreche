@@ -1,6 +1,7 @@
 package spreche
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,12 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 )
+
+type eventBlocks struct {
+	Event struct {
+		Blocks []slack.Block `json:"blocks"`
+	} `json:"event"`
+}
 
 func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 	ctx := req.Context()
@@ -54,7 +61,24 @@ func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 
 			switch ev := ev.InnerEvent.Data.(type) {
 			case *slackevents.MessageEvent:
-				return s.OnMessage(ctx, teamID, gh, ev)
+				var evBlocks struct {
+					Event struct {
+						Blocks json.RawMessage `json:"blocks"`
+					} `json:"event"`
+				}
+				var blocks []slack.Block
+				if err = json.Unmarshal(body, &evBlocks); err == nil { // sic
+					var b slack.Blocks
+					if err = json.Unmarshal(evBlocks.Event.Blocks, &b); err == nil { // sic
+						blocks = b.BlockSet
+					}
+				}
+				if len(blocks) > 0 {
+					debugf("Parsed blocks: %v", blocks)
+				} else {
+					debugf("Did not parse blocks")
+				}
+				return s.OnMessage(ctx, teamID, gh, ev, blocks)
 
 			case *slackevents.ReactionAddedEvent:
 				return s.OnReactionAdded(ctx, gh, ev)
@@ -79,7 +103,7 @@ func (s *Service) OnURLVerification(w http.ResponseWriter, ev slackevents.Events
 	return mid.RespondJSON(w, slackevents.ChallengeResponse{Challenge: v.Challenge})
 }
 
-func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Client, ev *slackevents.MessageEvent) error {
+func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Client, ev *slackevents.MessageEvent, blocks []slack.Block) error {
 	if ev.ChannelType != "channel" {
 		return nil
 	}
@@ -131,8 +155,7 @@ func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Clien
 			commentURL += fmt.Sprintf("?thread_ts=%s&cid=%s", ev.ThreadTimeStamp, ev.Channel)
 		}
 
-		// xxx convert Slack mrkdwn to GitHub Markdown
-		body := fmt.Sprintf("_[[comment](%s) from %s]_\n\n%s", commentURL, slackUser.Name, ev.Text)
+		body := textOrBlocksToGH(commentURL, slackUser.Name, ev.Text, blocks)
 
 		var ghuser *github.User
 		if user != nil {
@@ -171,4 +194,124 @@ func (s *Service) OnReactionAdded(ctx context.Context, gh *github.Client, ev *sl
 func (s *Service) OnReactionRemoved(ctx context.Context, gh *github.Client, ev *slackevents.ReactionRemovedEvent) error {
 	// xxx
 	return nil
+}
+
+func textOrBlocksToGH(commentURL, username, text string, blocks []slack.Block) string {
+	buf := new(bytes.Buffer)
+	fmt.Fprintf(buf, "_[[comment](%s) from %s]_", commentURL, username)
+	if len(blocks) == 0 {
+		fmt.Fprint(buf, "\n\n"+text) // xxx escaping of text
+	} else {
+		blocksToGH(buf, blocks)
+	}
+	return buf.String()
+}
+
+func blocksToGH(w io.Writer, blocks []slack.Block) {
+	for _, block := range blocks {
+		fmt.Fprint(w, "\n\n")
+		blockToGH(w, block)
+	}
+}
+
+func blockToGH(w io.Writer, block slack.Block) {
+	switch block := block.(type) {
+	case slack.ActionBlock:
+		fmt.Fprint(w, "[unrendered action block]")
+
+	case slack.ContextBlock:
+		for _, elem := range block.ContextElements.Elements {
+			mixedElementToGH(w, elem)
+		}
+
+	case slack.DividerBlock:
+		fmt.Fprint(w, "--")
+
+	case slack.FileBlock:
+		fmt.Fprint(w, "[unrendered file block]")
+
+	case slack.HeaderBlock:
+		if block.Text != nil {
+			fmt.Fprint(w, "## ")
+			textBlockObjectToGH(w, *block.Text)
+		}
+
+	case slack.ImageBlock:
+		imageToGH(w, block.ImageURL, block.AltText, block.Title)
+
+	case slack.InputBlock:
+		fmt.Fprint(w, "[unrendered input block]")
+
+	case slack.RichTextBlock:
+		for _, elem := range block.Elements {
+			richTextElementToGH(w, elem)
+		}
+
+	case slack.SectionBlock:
+		if len(block.Fields) > 0 {
+			sectionFieldsToGH(w, block.Fields)
+		} else {
+			textBlockObjectToGH(w, *block.Text)
+		}
+		// TODO: block.Accessory
+
+	case slack.TextBlockObject:
+		textBlockObjectToGH(w, block)
+
+	default:
+		fmt.Fprintf(w, "[unknown Slack block type %T (%s)]", block, block.BlockType())
+	}
+}
+
+func imageToGH(w io.Writer, imageURL, altText string, title *slack.TextBlockObject) {
+	fmt.Fprintf(w, "![%s](%s)", altText, imageURL) // xxx escaping (also honor title)
+}
+
+func mixedElementToGH(w io.Writer, elem slack.MixedElement) {
+	switch elem := elem.(type) {
+	case slack.ImageBlockElement:
+		imageToGH(w, elem.ImageURL, elem.AltText, nil)
+
+	case slack.TextBlockObject:
+		textBlockObjectToGH(w, elem)
+
+	default:
+		fmt.Fprintf(w, "[unknown Slack mixed-element type %T (%s)]", elem, elem.MixedElementType())
+	}
+}
+
+func richTextElementToGH(w io.Writer, elem slack.RichTextElement) {
+	switch elem := elem.(type) {
+	case slack.RichTextSection:
+		for _, ee := range elem.Elements {
+			richTextSectionElementToGH(w, ee)
+		}
+
+	default:
+		fmt.Fprintf(w, "[unknown Slack rich-text element type %T (%s)]", elem, elem.RichTextElementType())
+	}
+}
+
+func richTextSectionElementToGH(w io.Writer, elem slack.RichTextSectionElement) {
+	switch elem := elem.(type) {
+	case slack.RichTextSectionBroadcastElement:
+	case slack.RichTextSectionChannelElement:
+	case slack.RichTextSectionColorElement:
+	case slack.RichTextSectionDateElement:
+	case slack.RichTextSectionEmojiElement:
+	case slack.RichTextSectionLinkElement:
+	case slack.RichTextSectionTeamElement:
+	case slack.RichTextSectionTextElement:
+	case slack.RichTextSectionUserElement:
+	case slack.RichTextSectionUserGroupElement:
+	default:
+		fmt.Fprintf(w, "[unknown Slack rich-text-section element type %T (%s)]", elem, elem.RichTextSectionElementType())
+	}
+}
+
+func textBlockObjectToGH(w io.Writer, obj slack.TextBlockObject) {
+	fmt.Fprint(w, obj.Text) // xxx escaping, obj.Verbatim
+}
+
+func sectionFieldsToGH(w io.Writer, objs []*slack.TextBlockObject) {
 }
