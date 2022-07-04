@@ -1,0 +1,21 @@
+{
+    "event": {
+        "blocks": [
+            {
+                "type": "rich_text",
+                "block_id": "kDa",
+                "elements": [
+                    {
+                        "type": "rich_text_section",
+                        "elements": [
+                            {
+                                "type": "text",
+                                "text": "This looks interesting"
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+}

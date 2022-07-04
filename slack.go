@@ -15,6 +15,12 @@ import (
 	"github.com/slack-go/slack/slackevents"
 )
 
+type eventBlocks struct {
+	Event struct {
+		Blocks []slack.Block `json:"blocks"`
+	} `json:"event"`
+}
+
 func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 	ctx := req.Context()
 
@@ -54,7 +60,19 @@ func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 
 			switch ev := ev.InnerEvent.Data.(type) {
 			case *slackevents.MessageEvent:
-				return s.OnMessage(ctx, teamID, gh, ev)
+				var evBlocks struct {
+					Event struct {
+						Blocks json.RawMessage `json:"blocks"`
+					} `json:"event"`
+				}
+				var blocks []slack.Block
+				if err = json.Unmarshal(body, &evBlocks); err == nil { // sic
+					var b slack.Blocks
+					if err = json.Unmarshal(evBlocks.Event.Blocks, &b); err == nil { // sic
+						blocks = b.BlockSet
+					}
+				}
+				return s.OnMessage(ctx, teamID, gh, ev, blocks)
 
 			case *slackevents.ReactionAddedEvent:
 				return s.OnReactionAdded(ctx, gh, ev)
@@ -79,7 +97,7 @@ func (s *Service) OnURLVerification(w http.ResponseWriter, ev slackevents.Events
 	return mid.RespondJSON(w, slackevents.ChallengeResponse{Challenge: v.Challenge})
 }
 
-func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Client, ev *slackevents.MessageEvent) error {
+func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Client, ev *slackevents.MessageEvent, blocks []slack.Block) error {
 	if ev.ChannelType != "channel" {
 		return nil
 	}
@@ -131,8 +149,7 @@ func (s *Service) OnMessage(ctx context.Context, teamID string, gh *github.Clien
 			commentURL += fmt.Sprintf("?thread_ts=%s&cid=%s", ev.ThreadTimeStamp, ev.Channel)
 		}
 
-		// xxx convert Slack mrkdwn to GitHub Markdown
-		body := fmt.Sprintf("_[[comment](%s) from %s]_\n\n%s", commentURL, slackUser.Name, ev.Text)
+		body := textOrBlocksToGH(commentURL, slackUser.Name, ev.Text, blocks)
 
 		var ghuser *github.User
 		if user != nil {
