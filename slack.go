@@ -72,11 +72,6 @@ func (s *Service) OnSlackEvent(w http.ResponseWriter, req *http.Request) error {
 						blocks = b.BlockSet
 					}
 				}
-				if len(blocks) > 0 {
-					debugf("Parsed blocks: %v", blocks)
-				} else {
-					debugf("Did not parse blocks")
-				}
 				return s.OnMessage(ctx, teamID, gh, ev, blocks)
 
 			case *slackevents.ReactionAddedEvent:

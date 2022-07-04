@@ -111,14 +111,14 @@ func richTextSectionElementToGH(w io.Writer, elem slack.RichTextSectionElement) 
 		styledContentToGH(
 			w,
 			&slack.RichTextSectionTextStyle{Bold: true},
-			func() { fmt.Print(w, elem.Range) },
+			func(_ bool) { fmt.Print(w, elem.Range) },
 		)
 
 	case *slack.RichTextSectionChannelElement:
 		styledContentToGH(
 			w,
 			&slack.RichTextSectionTextStyle{Bold: true},
-			func() { fmt.Print(w, elem.ChannelID) },
+			func(_ bool) { fmt.Print(w, elem.ChannelID) },
 		)
 
 	case *slack.RichTextSectionColorElement:
@@ -128,7 +128,7 @@ func richTextSectionElementToGH(w io.Writer, elem slack.RichTextSectionElement) 
 		styledContentToGH(
 			w,
 			&slack.RichTextSectionTextStyle{Italic: true},
-			func() { fmt.Print(w, elem.Timestamp) },
+			func(_ bool) { fmt.Print(w, elem.Timestamp) },
 		)
 
 	case *slack.RichTextSectionEmojiElement:
@@ -138,13 +138,19 @@ func richTextSectionElementToGH(w io.Writer, elem slack.RichTextSectionElement) 
 		fmt.Fprintf(w, "[%s](%s)", ghEscape(elem.Text), elem.URL)
 
 	case *slack.RichTextSectionTeamElement:
-		styledContentToGH(w, elem.Style, func() { fmt.Fprint(w, elem.TeamID) })
+		styledContentToGH(w, elem.Style, func(_ bool) { fmt.Fprint(w, elem.TeamID) })
 
 	case *slack.RichTextSectionTextElement:
-		styledContentToGH(w, elem.Style, func() { fmt.Fprint(w, ghEscape(elem.Text)) })
+		styledContentToGH(w, elem.Style, func(esc bool) {
+			txt := elem.Text
+			if esc {
+				txt = ghEscape(elem.Text)
+			}
+			fmt.Fprint(w, txt)
+		})
 
 	case *slack.RichTextSectionUserElement:
-		styledContentToGH(w, elem.Style, func() { fmt.Fprint(w, elem.UserID) })
+		styledContentToGH(w, elem.Style, func(_ bool) { fmt.Fprint(w, elem.UserID) })
 
 	case *slack.RichTextSectionUserGroupElement:
 		fmt.Fprint(w, elem.UsergroupID) // xxx escaping
@@ -171,7 +177,8 @@ func sectionFieldsToGH(w io.Writer, objs []*slack.TextBlockObject) {
 	}
 }
 
-func styledContentToGH(w io.Writer, style *slack.RichTextSectionTextStyle, f func()) {
+func styledContentToGH(w io.Writer, style *slack.RichTextSectionTextStyle, f func(bool)) {
+	esc := true
 	if style != nil {
 		if style.Strike {
 			fmt.Fprint(w, "~~")
@@ -185,9 +192,10 @@ func styledContentToGH(w io.Writer, style *slack.RichTextSectionTextStyle, f fun
 		}
 		if style.Code {
 			fmt.Fprint(w, "`")
+			esc = false
 		}
 	}
-	f()
+	f(esc)
 	if style != nil {
 		if style.Code {
 			fmt.Fprint(w, "`")
