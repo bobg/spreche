@@ -1,0 +1,28 @@
+{
+    "event": {
+        "blocks": [
+            {
+                "type": "section",
+                "block_id": "kDa",
+                "fields": [
+                    {
+                        "type": "plain_text",
+                        "text": "Heading 1"
+                    },
+                    {
+                        "type": "plain_text",
+                        "text": "Heading 2"
+                    },
+                    {
+                        "type": "plain_text",
+                        "text": "Body 1"
+                    },
+                    {
+                        "type": "plain_text",
+                        "text": "Body 2"
+                    }
+                ]
+            }
+        ]
+    }
+}
