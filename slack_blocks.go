@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"regexp"
 
 	"github.com/slack-go/slack"
 )
 
 func textOrBlocksToGH(commentURL, username, text string, blocks []slack.Block) string {
 	buf := new(bytes.Buffer)
-	fmt.Fprintf(buf, "_[[comment](%s) from %s]_", commentURL, username)
+	fmt.Fprintf(buf, "_[[Comment](%s) from %s]_", commentURL, username)
 	if len(blocks) == 0 {
-		fmt.Fprint(buf, "\n\n"+text) // xxx escaping of text
+		fmt.Fprint(buf, "\n\n", ghEscape(text)) // xxx escaping of text
 	} else {
 		blocksToGH(buf, blocks)
 	}
@@ -37,7 +38,7 @@ func blockToGH(w io.Writer, block slack.Block) {
 		}
 
 	case *slack.DividerBlock:
-		fmt.Fprint(w, "--")
+		fmt.Fprint(w, "---")
 
 	case *slack.FileBlock:
 		fmt.Fprint(w, "[unrendered file block]")
@@ -76,7 +77,7 @@ func blockToGH(w io.Writer, block slack.Block) {
 }
 
 func imageToGH(w io.Writer, imageURL, altText string, title *slack.TextBlockObject) {
-	fmt.Fprintf(w, "![%s](%s)", altText, imageURL) // xxx escaping (also honor title)
+	fmt.Fprintf(w, "![%s](%s)", ghEscape(altText), imageURL) // xxx title
 }
 
 func mixedElementToGH(w io.Writer, elem slack.MixedElement) {
@@ -121,7 +122,7 @@ func richTextSectionElementToGH(w io.Writer, elem slack.RichTextSectionElement) 
 		)
 
 	case *slack.RichTextSectionColorElement:
-		fmt.Fprint(w, elem.Value) // xxx escaping
+		fmt.Fprint(w, ghEscape(elem.Value))
 
 	case *slack.RichTextSectionDateElement:
 		styledContentToGH(
@@ -134,13 +135,13 @@ func richTextSectionElementToGH(w io.Writer, elem slack.RichTextSectionElement) 
 		fmt.Fprintf(w, ":%s:", elem.Name)
 
 	case *slack.RichTextSectionLinkElement:
-		fmt.Fprintf(w, "[%s](%s)", elem.Text, elem.URL)
+		fmt.Fprintf(w, "[%s](%s)", ghEscape(elem.Text), elem.URL)
 
 	case *slack.RichTextSectionTeamElement:
 		styledContentToGH(w, elem.Style, func() { fmt.Fprint(w, elem.TeamID) })
 
 	case *slack.RichTextSectionTextElement:
-		styledContentToGH(w, elem.Style, func() { fmt.Fprint(w, elem.Text) })
+		styledContentToGH(w, elem.Style, func() { fmt.Fprint(w, ghEscape(elem.Text)) })
 
 	case *slack.RichTextSectionUserElement:
 		styledContentToGH(w, elem.Style, func() { fmt.Fprint(w, elem.UserID) })
@@ -154,10 +155,11 @@ func richTextSectionElementToGH(w io.Writer, elem slack.RichTextSectionElement) 
 }
 
 func textBlockObjectToGH(w io.Writer, obj *slack.TextBlockObject) {
-	fmt.Fprint(w, obj.Text) // xxx escaping, obj.Verbatim
+	fmt.Fprint(w, ghEscape(obj.Text)) // xxx obj.Type (plain_text or mrkdwn), obj.Emoji, obj.Verbatim
 }
 
 func sectionFieldsToGH(w io.Writer, objs []*slack.TextBlockObject) {
+	// xxx is a header line required?
 	for i := 0; i < len(objs); i += 2 {
 		fmt.Fprint(w, "| ")
 		textBlockObjectToGH(w, objs[i])
@@ -201,4 +203,10 @@ func styledContentToGH(w io.Writer, style *slack.RichTextSectionTextStyle, f fun
 			fmt.Fprint(w, "~~")
 		}
 	}
+}
+
+var escRegex = regexp.MustCompile("([][\\`*_{}()#+.!-])")
+
+func ghEscape(in string) string {
+	return escRegex.ReplaceAllString(in, "\\$1")
 }

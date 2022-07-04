@@ -3,6 +3,7 @@ package spreche
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,6 +51,23 @@ func TestSlackBlocks(t *testing.T) {
 			}
 			if diff := cmp.Diff(string(want), buf.String()); diff != "" {
 				t.Errorf("mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestGHEscape(t *testing.T) {
+	cases := []struct{ in, want string }{{
+		in: "foo", want: "foo",
+	}, {
+		in: "*foo", want: "\\*foo",
+	}}
+
+	for i, tc := range cases {
+		t.Run(fmt.Sprintf("case_%02d", i+1), func(t *testing.T) {
+			got := ghEscape(tc.in)
+			if got != tc.want {
+				t.Errorf("got %s, want %s", got, tc.want)
 			}
 		})
 	}
