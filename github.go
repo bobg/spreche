@@ -139,26 +139,21 @@ func (s *Service) PROpened(ctx context.Context, tenant *Tenant, ev *github.PullR
 		slack.MsgOptionDisableLinkUnfurl(),
 		slack.MsgOptionText(body, false), // xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
 	}
-	_, _, err = sc.PostMessageContext(ctx, ch.ID, postOptions...)
-	return errors.Wrap(err, "posting new-channel message")
+	return s.postToSlack(ctx, tenant, ch.ID, 0, postOptions...)
 }
 
-// note: reviews do not get placed in the comment store,
-// unlike review _comments_
 func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEvent) error {
-	return s.onReviewOrComment(ctx, ev.Repo, *ev.PullRequest.Number, ev.Review.User, ev.Review.Body, *ev.Review.HTMLURL, "Review")
+	return s.onReviewOrComment(ctx, ev.Repo, *ev.PullRequest.Number, ev.Review.User, *ev.Review.ID, ev.Review.Body, *ev.Review.HTMLURL, "Review")
 }
 
-// note: issue comments do not get placed in the comment store,
-// unlike review comments
 func (s *Service) OnIssueComment(ctx context.Context, ev *github.IssueCommentEvent) error {
 	if ev.Issue.PullRequestLinks == nil {
 		return nil
 	}
-	return s.onReviewOrComment(ctx, ev.Repo, *ev.Issue.Number, ev.Comment.User, ev.Comment.Body, *ev.Comment.HTMLURL, "Comment")
+	return s.onReviewOrComment(ctx, ev.Repo, *ev.Issue.Number, ev.Comment.User, *ev.Comment.ID, ev.Comment.Body, *ev.Comment.HTMLURL, "Comment")
 }
 
-func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository, prnum int, user *github.User, body *string, htmlURL, typ string) error {
+func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository, prnum int, user *github.User, commentID int64, body *string, htmlURL, typ string) error {
 	if body == nil || *body == "" {
 		return nil
 	}
@@ -168,7 +163,6 @@ func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository
 	return s.Tenants.WithTenant(ctx, 0, *repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
 		debugf("In onReviewOrComment, tenant ID %d", tenant.TenantID)
 
-		sc := tenant.SlackClient()
 		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, repo, prnum)
 		if err != nil {
 			return errors.Wrapf(err, "getting channel for PR %d in %s", prnum, *repo.HTMLURL)
@@ -208,8 +202,7 @@ func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository
 		default:
 			options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx ?
 		}
-		_, _, err = sc.PostMessageContext(ctx, channel.ChannelID, options...)
-		return errors.Wrap(err, "posting message")
+		return s.postToSlack(ctx, tenant, channel.ChannelID, commentID, options...)
 	})
 }
 
@@ -287,15 +280,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 			options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
 		}
 
-		sc := tenant.SlackClient()
-		_, timestamp, err := sc.PostMessageContext(ctx, channel.ChannelID, options...)
-		if err != nil {
-			return errors.Wrap(err, "posting message")
-		}
-		if isReply {
-			return nil
-		}
-		return s.Comments.Add(ctx, tenant.TenantID, channel.ChannelID, timestamp, *ev.Comment.ID)
+		return s.postToSlack(ctx, tenant, channel.ChannelID, *ev.Comment.ID, options...)
 	})
 }
 
@@ -309,20 +294,19 @@ func (s *Service) OnPRReviewThread(ctx context.Context, ev *github.PullRequestRe
 		if err != nil {
 			return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
 		}
-		sc := tenant.SlackClient()
-		_, _, err = sc.PostMessageContext(ctx, channel.ChannelID,
+
+		options := []slack.MsgOption{
 			// xxx slack.MsgOptionsTs(...)?
 			// xxx slack.MsgOptionUser(...)?
 			// xxx slack.MsgOptionAsUser(...)?
 			slack.MsgOptionBlocks(slack.NewContextBlock("", slack.NewTextBlockObject(
-				"mrkdwn",
+				"plain_text",
 				fmt.Sprintf("_This thread was marked %s by %s_", *ev.Action, *ev.Sender.Login),
 				false,
 				false,
 			))),
-		)
-		// xxx add timestamp to comment store?
-		return errors.Wrap(err, "posting comment")
+		}
+		return s.postToSlack(ctx, tenant, channel.ChannelID, *ev.Thread.ID, options...)
 	})
 }
 
@@ -358,7 +342,6 @@ func (s *Service) reviewRequest(ctx context.Context, tenant *Tenant, ev *github.
 	if err != nil {
 		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
 	}
-	sc := tenant.SlackClient()
 
 	var msg string
 	if requested {
@@ -366,14 +349,14 @@ func (s *Service) reviewRequest(ctx context.Context, tenant *Tenant, ev *github.
 	} else {
 		msg = fmt.Sprintf("_Review request from %s removed by %s_", requestedFrom, *ev.Sender.Login)
 	}
-	_, _, err = sc.PostMessageContext(ctx, channel.ChannelID,
+
+	options := []slack.MsgOption{
 		// xxx slack.MsgOptionsTs(...)?
 		// xxx slack.MsgOptionUser(...)?
 		// xxx slack.MsgOptionAsUser(...)?
-		slack.MsgOptionBlocks(slack.NewContextBlock("", slack.NewTextBlockObject("mrkdwn", msg, false, false))),
-	)
-	// xxx add timestamp to comment store?
-	return errors.Wrap(err, "posting comment")
+		slack.MsgOptionBlocks(slack.NewContextBlock("", slack.NewTextBlockObject("plain_text", msg, false, false))),
+	}
+	return s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 }
 
 func (s *Service) PRReviewRequestSynchronize(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
@@ -414,4 +397,16 @@ func (s *Service) PREdited(ctx context.Context, tenant *Tenant, ev *github.PullR
 func (s *Service) PRReopened(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
 	// xxx
 	return nil
+}
+
+func (s *Service) postToSlack(ctx context.Context, tenant *Tenant, channelID string, commentID int64, options ...slack.MsgOption) error {
+	sc := tenant.SlackClient()
+	_, timestamp, err := sc.PostMessageContext(ctx, channelID, options...)
+	if err != nil {
+		return errors.Wrap(err, "posting message to Slack")
+	}
+	if commentID == 0 {
+		return nil
+	}
+	return s.Comments.Add(ctx, tenant.TenantID, channelID, timestamp, commentID)
 }
