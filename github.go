@@ -171,7 +171,7 @@ func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository
 		sc := tenant.SlackClient()
 		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, repo, prnum)
 		if err != nil {
-			return errors.Wrapf(err, "getting channel for PR %d in %s/%s", prnum, *user.Login, *repo.HTMLURL)
+			return errors.Wrapf(err, "getting channel for PR %d in %s", prnum, *repo.HTMLURL)
 		}
 
 		// xxx ensure channel exists
@@ -225,7 +225,7 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 
 		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
 		if err != nil {
-			return errors.Wrapf(err, "getting channel for PR %d in %s/%s", *ev.PullRequest.Number, *ev.Repo.Owner.Login, *ev.Repo.HTMLURL)
+			return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
 		}
 		var (
 			options = []slack.MsgOption{slack.MsgOptionDisableLinkUnfurl()}
@@ -300,8 +300,26 @@ func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestR
 }
 
 func (s *Service) OnPRReviewThread(ctx context.Context, ev *github.PullRequestReviewThreadEvent) error {
-	// xxx
-	return nil
+	return s.Tenants.WithTenant(ctx, 0, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
+		debugf("In OnPRReviewThread, tenant ID %d", tenant.TenantID)
+
+		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
+		if err != nil {
+			return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
+		}
+		sc := tenant.SlackClient()
+		_, timestamp, err := sc.PostMessageContext(ctx, channel.ChannelID, []slack.MsgOption{
+			// xxx slack.MsgOptionsTs(...)?
+			// xxx slack.MsgOptionUser(...)?
+			// xxx slack.MsgOptionAsUser(...)?
+			slack.MsgOptionBlocks(slack.NewContextBlock(slack.NewTextBlockObject(
+				"mrkdwn",
+				fmt.Sprintf("_This thread was marked %s by %s_", *ev.Action, *ev.Sender.Login),
+				false,
+				false,
+			))),
+		})
+	})
 }
 
 func (s *Service) PRReviewRequested(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
