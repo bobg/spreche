@@ -303,41 +303,85 @@ func (s *Service) OnPRReviewThread(ctx context.Context, ev *github.PullRequestRe
 	return s.Tenants.WithTenant(ctx, 0, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
 		debugf("In OnPRReviewThread, tenant ID %d", tenant.TenantID)
 
+		// xxx ensure channel exists
+
 		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
 		if err != nil {
 			return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
 		}
 		sc := tenant.SlackClient()
-		_, timestamp, err := sc.PostMessageContext(ctx, channel.ChannelID, []slack.MsgOption{
+		_, _, err = sc.PostMessageContext(ctx, channel.ChannelID,
 			// xxx slack.MsgOptionsTs(...)?
 			// xxx slack.MsgOptionUser(...)?
 			// xxx slack.MsgOptionAsUser(...)?
-			slack.MsgOptionBlocks(slack.NewContextBlock(slack.NewTextBlockObject(
+			slack.MsgOptionBlocks(slack.NewContextBlock("", slack.NewTextBlockObject(
 				"mrkdwn",
 				fmt.Sprintf("_This thread was marked %s by %s_", *ev.Action, *ev.Sender.Login),
 				false,
 				false,
 			))),
-		})
+		)
+		// xxx add timestamp to comment store?
+		return errors.Wrap(err, "posting comment")
 	})
 }
 
 func (s *Service) PRReviewRequested(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
+	return s.reviewRequest(ctx, tenant, ev, true)
+}
+
+func (s *Service) PRReviewRequestRemoved(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
+	return s.reviewRequest(ctx, tenant, ev, false)
+}
+
+func (s *Service) reviewRequest(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent, requested bool) error {
+	var (
+		requestedFromTeam bool
+		requestedFrom     string
+	)
+	if ev.RequestedReviewer != nil {
+		requestedFrom = *ev.RequestedReviewer.Login
+	} else if ev.RequestedTeam != nil {
+		requestedFromTeam = true
+		requestedFrom = *ev.RequestedTeam.Name
+	}
+	if requestedFrom == "" {
+		return nil
+	}
+	if requestedFromTeam {
+		requestedFrom = "team " + requestedFrom
+	}
+
+	// xxx ensure channel exists
+
+	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
+	if err != nil {
+		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
+	}
+	sc := tenant.SlackClient()
+
+	var msg string
+	if requested {
+		msg = fmt.Sprintf("_Review requested from %s by %s_", requestedFrom, *ev.Sender.Login)
+	} else {
+		msg = fmt.Sprintf("_Review request from %s removed by %s_", requestedFrom, *ev.Sender.Login)
+	}
+	_, _, err = sc.PostMessageContext(ctx, channel.ChannelID,
+		// xxx slack.MsgOptionsTs(...)?
+		// xxx slack.MsgOptionUser(...)?
+		// xxx slack.MsgOptionAsUser(...)?
+		slack.MsgOptionBlocks(slack.NewContextBlock("", slack.NewTextBlockObject("mrkdwn", msg, false, false))),
+	)
+	// xxx add timestamp to comment store?
+	return errors.Wrap(err, "posting comment")
+}
+
+func (s *Service) PRReviewRequestSynchronize(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
 	// xxx
 	return nil
 }
 
 func (s *Service) PRReviewRequestLabeled(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	// xxx
-	return nil
-}
-
-func (s *Service) PRReviewRequestRemoved(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	// xxx
-	return nil
-}
-
-func (s *Service) PRReviewRequestSynchronize(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
 	// xxx
 	return nil
 }
@@ -348,6 +392,11 @@ func (s *Service) PRReviewRequestUnlabeled(ctx context.Context, tenant *Tenant, 
 }
 
 func (s *Service) PRAssigned(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
+	// xxx
+	return nil
+}
+
+func (s *Service) PRUnassigned(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
 	// xxx
 	return nil
 }
@@ -363,11 +412,6 @@ func (s *Service) PREdited(ctx context.Context, tenant *Tenant, ev *github.PullR
 }
 
 func (s *Service) PRReopened(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	// xxx
-	return nil
-}
-
-func (s *Service) PRUnassigned(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
 	// xxx
 	return nil
 }
