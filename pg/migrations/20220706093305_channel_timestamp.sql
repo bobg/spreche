@@ -1,9 +1,10 @@
 -- +goose Up
 -- +goose StatementBegin
-SELECT 'up SQL query';
+ALTER TABLE channels ADD COLUMN prbody_timestamp TEXT NOT NULL DEFAULT '';
+ALTER TABLE channels ALTER COLUMN prbody_timestamp DROP DEFAULT;
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
-SELECT 'down SQL query';
+ALTER TABLE channels DROP COLUMN prbody_timestamp;
 -- +goose StatementEnd

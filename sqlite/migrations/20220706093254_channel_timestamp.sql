@@ -1,6 +1,6 @@
 -- +goose Up
 -- +goose StatementBegin
-ALTER TABLE channels ADD COLUMN prbody_timestamp TEXT NOT NULL;
+ALTER TABLE channels ADD COLUMN prbody_timestamp TEXT NOT NULL DEFAULT '';
 -- +goose StatementEnd
 
 -- +goose Down
