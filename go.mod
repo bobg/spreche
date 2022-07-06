@@ -8,6 +8,7 @@ require (
 	github.com/bobg/sqlutil v1.1.0
 	github.com/bobg/subcmd/v2 v2.0.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.0.4
+	github.com/google/go-cmp v0.5.8
 	github.com/google/go-github/v45 v45.1.0
 	github.com/lib/pq v1.10.6
 	github.com/mattn/go-sqlite3 v1.14.12
@@ -20,7 +21,6 @@ require (
 
 require (
 	github.com/golang-jwt/jwt/v4 v4.0.0 // indirect
-	github.com/google/go-cmp v0.5.8 // indirect
 	github.com/google/go-github/v41 v41.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
