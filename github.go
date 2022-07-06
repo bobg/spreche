@@ -46,90 +46,96 @@ func (s *Service) OnPR(ctx context.Context, ev *github.PullRequestEvent) error {
 	return s.Tenants.WithTenant(ctx, 0, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
 		debugf("In OnPR, tenantID is %d", tenant.TenantID)
 
-		switch ev.GetAction() {
-		case "opened":
-			return s.PROpened(ctx, tenant, ev)
+		return s.ensureChannel(ctx, tenant, ev.Repo, ev.PullRequest, func(channel *Channel) error {
+			switch ev.GetAction() {
+			case "opened":
+				// everything is handled in ensureChannel
+				return nil
 
-		case "edited":
-			return s.PREdited(ctx, tenant, ev)
+			case "edited":
+				return s.PREdited(ctx, tenant, channel, ev)
 
-		case "closed":
-			return s.PRClosed(ctx, tenant, ev)
+			case "closed":
+				return s.PRClosed(ctx, tenant, channel, ev)
 
-		case "reopened":
-			return s.PRReopened(ctx, tenant, ev)
+			case "reopened":
+				return s.PRReopened(ctx, tenant, channel, ev)
 
-		case "assigned":
-			return s.PRAssigned(ctx, tenant, ev)
+			case "assigned":
+				return s.PRAssigned(ctx, tenant, channel, ev)
 
-		case "unassigned":
-			return s.PRUnassigned(ctx, tenant, ev)
+			case "unassigned":
+				return s.PRUnassigned(ctx, tenant, channel, ev)
 
-		case "review_requested":
-			return s.PRReviewRequested(ctx, tenant, ev)
+			case "review_requested":
+				return s.PRReviewRequested(ctx, tenant, channel, ev)
 
-		case "review_request_removed":
-			return s.PRReviewRequestRemoved(ctx, tenant, ev)
+			case "review_request_removed":
+				return s.PRReviewRequestRemoved(ctx, tenant, channel, ev)
 
-		case "labeled":
-			return s.PRReviewRequestLabeled(ctx, tenant, ev)
+			case "labeled":
+				return s.PRReviewRequestLabeled(ctx, tenant, channel, ev)
 
-		case "unlabeled":
-			return s.PRReviewRequestUnlabeled(ctx, tenant, ev)
+			case "unlabeled":
+				return s.PRReviewRequestUnlabeled(ctx, tenant, channel, ev)
 
-		case "synchronize":
-			return s.PRReviewRequestSynchronize(ctx, tenant, ev)
-		}
+			case "synchronize":
+				return s.PRReviewRequestSynchronize(ctx, tenant, channel, ev)
+			}
 
-		return fmt.Errorf("unknown PR event action %s", ev.GetAction())
+			return fmt.Errorf("unknown PR event action %s", ev.GetAction())
+		})
 	})
 }
 
-func (s *Service) PROpened(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	var (
-		sc   = tenant.SlackClient()
-		repo = ev.Repo
-		pr   = ev.PullRequest
-	)
-
-	chname := ChannelName(repo, *pr.Number)
-	ch, err := sc.CreateConversationContext(ctx, chname, false)
-	if err != nil {
-		return errors.Wrapf(err, "creating channel %s", chname)
+func (s *Service) ensureChannel(ctx context.Context, tenant *Tenant, repo *github.Repository, pr *github.PullRequest, f func(*Channel) error) error {
+	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, repo, *pr.Number)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return err
 	}
-
-	debugf("Created channel %s, ID %s", chname, ch.ID)
-
-	if err = setChannelTopic(ctx, sc, ch.ID, pr); err != nil {
-		return errors.Wrapf(err, "setting topic of channel %s", chname)
-	}
-
-	ghUsers := []*github.User{
-		pr.User,
-		pr.Assignee,
-	}
-	ghUsers = append(ghUsers, pr.Assignees...)
-	ghUsers = append(ghUsers, pr.RequestedReviewers...)
-	// xxx also pr.RequestedTeams ?
-
-	slackUsers, err := s.GHToSlackUsers(ctx, tenant.TenantID, ghUsers)
-	if err != nil {
-		return errors.Wrap(err, "mapping GitHub to Slack users")
-	}
-
-	if len(slackUsers) > 0 {
-		_, err = sc.InviteUsersToConversationContext(ctx, ch.ID, slackUsers...)
+	sc := tenant.SlackClient()
+	if errors.Is(err, ErrNotFound) {
+		chname := ChannelName(repo, *pr.Number)
+		slackCh, err := sc.CreateConversationContext(ctx, chname, false)
 		if err != nil {
-			return errors.Wrap(err, "inviting users to new channel")
+			return errors.Wrapf(err, "creating channel %s", chname)
+		}
+		debugf("Created channel %s, ID %s", chname, slackCh.ID)
+		err = setChannelTopic(ctx, sc, slackCh.ID, pr)
+		if err != nil {
+			return errors.Wrapf(err, "setting topic of channel %s", chname)
+		}
+		ghUsers := []*github.User{pr.User, pr.Assignee}
+		ghUsers = append(ghUsers, pr.Assignees...)
+		ghUsers = append(ghUsers, pr.RequestedReviewers...)
+		// xxx also pr.RequestedTeams?
+		slackUsers, err := s.GHToSlackUsers(ctx, tenant.TenantID, ghUsers)
+		if err != nil {
+			return errors.Wrap(err, "mapping GitHub to Slack users")
+		}
+		if len(slackUsers) > 0 {
+			_, err = sc.InviteUsersToConversationContext(ctx, slackCh.ID, slackUsers...)
+			if err != nil {
+				return errors.Wrap(err, "inviting users to new channel")
+			}
+		}
+		ts, err := s.postToSlack(ctx, tenant, slackCh.ID, 0, prBodyPostOptions(pr)...)
+		if err != nil {
+			return errors.Wrapf(err, "posting PR body in new channel %s", chname)
+		}
+		err = s.Channels.Add(ctx, tenant.TenantID, slackCh.ID, repo, *pr.Number, ts)
+		if err != nil {
+			return errors.Wrap(err, "adding record to channel store")
+		}
+		channel = &Channel{
+			ChannelID: slackCh.ID,
+			Owner:     *repo.Owner.Login,
+			Repo:      *repo.Name,
+			PR:        *pr.Number,
+			PRBodyTS:  ts,
 		}
 	}
-
-	ts, err := s.postToSlack(ctx, tenant, ch.ID, 0, prBodyPostOptions(pr)...)
-	if err != nil {
-		return errors.Wrap(err, "posting PR body")
-	}
-
-	return s.Channels.Add(ctx, tenant.TenantID, ch.ID, repo, *pr.Number, ts)
+	return f(channel)
 }
 
 func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEvent) error {
@@ -314,15 +320,15 @@ func (s *Service) OnPRReviewThread(ctx context.Context, ev *github.PullRequestRe
 	})
 }
 
-func (s *Service) PRReviewRequested(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	return s.reviewRequest(ctx, tenant, ev, true)
+func (s *Service) PRReviewRequested(ctx context.Context, tenant *Tenant, channel *Channel, ev *github.PullRequestEvent) error {
+	return s.reviewRequest(ctx, tenant, channel, ev, true)
 }
 
-func (s *Service) PRReviewRequestRemoved(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	return s.reviewRequest(ctx, tenant, ev, false)
+func (s *Service) PRReviewRequestRemoved(ctx context.Context, tenant *Tenant, channel *Channel, ev *github.PullRequestEvent) error {
+	return s.reviewRequest(ctx, tenant, channel, ev, false)
 }
 
-func (s *Service) reviewRequest(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent, requested bool) error {
+func (s *Service) reviewRequest(ctx context.Context, tenant *Tenant, channel *Channel, ev *github.PullRequestEvent, requested bool) error {
 	var (
 		requestedFromTeam bool
 		requestedFrom     string
@@ -340,13 +346,6 @@ func (s *Service) reviewRequest(ctx context.Context, tenant *Tenant, ev *github.
 		requestedFrom = "team " + requestedFrom
 	}
 
-	// xxx ensure channel exists
-
-	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
-	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
-	}
-
 	var msg string
 	if requested {
 		msg = fmt.Sprintf("_Review requested from %s by %s_", requestedFrom, *ev.Sender.Login)
@@ -360,15 +359,11 @@ func (s *Service) reviewRequest(ctx context.Context, tenant *Tenant, ev *github.
 		// xxx slack.MsgOptionAsUser(...)?
 		slack.MsgOptionBlocks(slack.NewContextBlock("", slack.NewTextBlockObject("mrkdwn", msg, false, false))),
 	}
-	_, err = s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
+	_, err := s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 	return errors.Wrap(err, "posting to Slack")
 }
 
-func (s *Service) PRReviewRequestSynchronize(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
-	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
-	}
+func (s *Service) PRReviewRequestSynchronize(ctx context.Context, tenant *Tenant, channel *Channel, ev *github.PullRequestEvent) error {
 	options := []slack.MsgOption{
 		// xxx slack.MsgOptionsTs(...)?
 		// xxx slack.MsgOptionUser(...)?
@@ -380,15 +375,11 @@ func (s *Service) PRReviewRequestSynchronize(ctx context.Context, tenant *Tenant
 			false,
 		))),
 	}
-	_, err = s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
+	_, err := s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 	return errors.Wrap(err, "posting to Slack")
 }
 
-func (s *Service) PRReviewRequestLabeled(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
-	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
-	}
+func (s *Service) PRReviewRequestLabeled(ctx context.Context, tenant *Tenant, channel *Channel, ev *github.PullRequestEvent) error {
 	options := []slack.MsgOption{
 		// xxx slack.MsgOptionsTs(...)?
 		// xxx slack.MsgOptionUser(...)?
@@ -400,15 +391,11 @@ func (s *Service) PRReviewRequestLabeled(ctx context.Context, tenant *Tenant, ev
 			false,
 		))),
 	}
-	_, err = s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
+	_, err := s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 	return errors.Wrap(err, "posting to Slack")
 }
 
-func (s *Service) PRReviewRequestUnlabeled(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
-	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
-	}
+func (s *Service) PRReviewRequestUnlabeled(ctx context.Context, tenant *Tenant, channel *Channel, ev *github.PullRequestEvent) error {
 	options := []slack.MsgOption{
 		// xxx slack.MsgOptionsTs(...)?
 		// xxx slack.MsgOptionUser(...)?
@@ -420,15 +407,11 @@ func (s *Service) PRReviewRequestUnlabeled(ctx context.Context, tenant *Tenant, 
 			false,
 		))),
 	}
-	_, err = s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
+	_, err := s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 	return errors.Wrap(err, "posting to Slack")
 }
 
-func (s *Service) PRAssigned(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
-	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
-	}
+func (s *Service) PRAssigned(ctx context.Context, tenant *Tenant, channel *Channel, ev *github.PullRequestEvent) error {
 	options := []slack.MsgOption{
 		// xxx slack.MsgOptionsTs(...)?
 		// xxx slack.MsgOptionUser(...)?
@@ -440,15 +423,11 @@ func (s *Service) PRAssigned(ctx context.Context, tenant *Tenant, ev *github.Pul
 			false,
 		))),
 	}
-	_, err = s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
+	_, err := s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 	return errors.Wrap(err, "posting to Slack")
 }
 
-func (s *Service) PRUnassigned(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
-	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
-	}
+func (s *Service) PRUnassigned(ctx context.Context, tenant *Tenant, channel *Channel, ev *github.PullRequestEvent) error {
 	options := []slack.MsgOption{
 		// xxx slack.MsgOptionsTs(...)?
 		// xxx slack.MsgOptionUser(...)?
@@ -460,15 +439,11 @@ func (s *Service) PRUnassigned(ctx context.Context, tenant *Tenant, ev *github.P
 			false,
 		))),
 	}
-	_, err = s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
+	_, err := s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 	return errors.Wrap(err, "posting to Slack")
 }
 
-func (s *Service) PRClosed(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
-	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
-	}
+func (s *Service) PRClosed(ctx context.Context, tenant *Tenant, channel *Channel, ev *github.PullRequestEvent) error {
 	options := []slack.MsgOption{
 		// xxx slack.MsgOptionsTs(...)?
 		// xxx slack.MsgOptionUser(...)?
@@ -480,30 +455,25 @@ func (s *Service) PRClosed(ctx context.Context, tenant *Tenant, ev *github.PullR
 			false,
 		))),
 	}
-	_, err = s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
+	_, err := s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 	return errors.Wrap(err, "posting to Slack")
 }
 
-func (s *Service) PREdited(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
+func (s *Service) PREdited(ctx context.Context, tenant *Tenant, channel *Channel, ev *github.PullRequestEvent) error {
 	if ev.Changes == nil {
 		return nil
-	}
-
-	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
-	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
 	}
 
 	sc := tenant.SlackClient()
 
 	if ev.Changes.Title != nil {
-		err = setChannelTopic(ctx, sc, channel.ChannelID, ev.PullRequest)
+		err := setChannelTopic(ctx, sc, channel.ChannelID, ev.PullRequest)
 		if err != nil {
 			return errors.Wrap(err, "setting channel topic")
 		}
 	}
 	if ev.Changes.Body != nil {
-		_, _, _, err = sc.UpdateMessageContext(ctx, channel.ChannelID, channel.PRBodyTS, prBodyPostOptions(ev.PullRequest)...)
+		_, _, _, err := sc.UpdateMessageContext(ctx, channel.ChannelID, channel.PRBodyTS, prBodyPostOptions(ev.PullRequest)...)
 		if err != nil {
 			return errors.Wrap(err, "updating PR body message")
 		}
@@ -530,11 +500,7 @@ func setChannelTopic(ctx context.Context, sc *slack.Client, channelID string, pr
 	return err
 }
 
-func (s *Service) PRReopened(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
-	if err != nil {
-		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
-	}
+func (s *Service) PRReopened(ctx context.Context, tenant *Tenant, channel *Channel, ev *github.PullRequestEvent) error {
 	options := []slack.MsgOption{
 		// xxx slack.MsgOptionsTs(...)?
 		// xxx slack.MsgOptionUser(...)?
@@ -546,7 +512,7 @@ func (s *Service) PRReopened(ctx context.Context, tenant *Tenant, ev *github.Pul
 			false,
 		))),
 	}
-	_, err = s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
+	_, err := s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 	return errors.Wrap(err, "posting to Slack")
 }
 
