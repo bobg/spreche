@@ -10,7 +10,7 @@ import (
 
 // ChannelStore is the type of a persistent store for Channels.
 type ChannelStore interface {
-	Add(ctx context.Context, tenantID int64, channelID string, repo *github.Repository, pr int) error
+	Add(ctx context.Context, tenantID int64, channelID string, repo *github.Repository, pr int, prbodyTS string) error
 	ByChannelID(context.Context, int64, string) (*Channel, error)
 	ByRepoPR(context.Context, int64, *github.Repository, int) (*Channel, error)
 }
@@ -21,6 +21,9 @@ type Channel struct {
 	Owner     string
 	Repo      string
 	PR        int
+
+	// PRBodyTS is the timestamp of the message in the channel containing the PR body.
+	PRBodyTS string
 }
 
 // ChannelName computes a Slack channel name for the given GH repo and PR number.
