@@ -143,17 +143,60 @@ func (s *Service) PROpened(ctx context.Context, tenant *Tenant, ev *github.PullR
 }
 
 func (s *Service) OnPRReview(ctx context.Context, ev *github.PullRequestReviewEvent) error {
-	return s.onReviewOrComment(ctx, ev.Repo, *ev.PullRequest.Number, ev.Review.User, *ev.Review.ID, ev.Review.Body, *ev.Review.HTMLURL, "Review")
+	return s.someKindOfComment(ctx, ev, nil, nil)
 }
 
 func (s *Service) OnIssueComment(ctx context.Context, ev *github.IssueCommentEvent) error {
 	if ev.Issue.PullRequestLinks == nil {
 		return nil
 	}
-	return s.onReviewOrComment(ctx, ev.Repo, *ev.Issue.Number, ev.Comment.User, *ev.Comment.ID, ev.Comment.Body, *ev.Comment.HTMLURL, "Comment")
+	return s.someKindOfComment(ctx, nil, ev, nil)
 }
 
-func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository, prnum int, user *github.User, commentID int64, body *string, htmlURL, typ string) error {
+func (s *Service) someKindOfComment(ctx context.Context, review *github.PullRequestReviewEvent, issue *github.IssueCommentEvent, reviewComment *github.PullRequestReviewCommentEvent) error {
+	var (
+		repo           *github.Repository
+		prnum          int
+		user           *github.User
+		action         string
+		commentID      int64
+		body, diffhunk *string
+		htmlURL, typ   string
+		isReply        bool
+	)
+	switch {
+	case review != nil:
+		repo = review.Repo
+		prnum = *review.PullRequest.Number
+		user = review.Review.User
+		action = *review.Action
+		commentID = *review.Review.ID
+		body = review.Review.Body
+		htmlURL = *review.Review.HTMLURL
+		typ = "Review"
+
+	case issue != nil:
+		repo = issue.Repo
+		prnum = *issue.Issue.Number
+		user = issue.Comment.User
+		action = *issue.Action
+		commentID = *issue.Comment.ID
+		body = issue.Comment.Body
+		htmlURL = *issue.Comment.HTMLURL
+		typ = "Comment"
+
+	case reviewComment != nil:
+		repo = reviewComment.Repo
+		prnum = *reviewComment.PullRequest.Number
+		user = reviewComment.Comment.User
+		action = *reviewComment.Action
+		commentID = *reviewComment.Comment.ID
+		body = reviewComment.Comment.Body
+		htmlURL = *reviewComment.Comment.HTMLURL
+		typ = "Review comment"
+		isReply = reviewComment.Comment.InReplyTo != nil && *reviewComment.Comment.InReplyTo != 0
+		diffhunk = reviewComment.Comment.DiffHunk
+	}
 	if body == nil || *body == "" {
 		return nil
 	}
@@ -161,7 +204,7 @@ func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository
 		return nil
 	}
 	return s.Tenants.WithTenant(ctx, 0, *repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
-		debugf("In onReviewOrComment, tenant ID %d", tenant.TenantID)
+		debugf("In someKindOfComment, tenant ID %d", tenant.TenantID)
 
 		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, repo, prnum)
 		if err != nil {
@@ -170,16 +213,23 @@ func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository
 
 		// xxx ensure channel exists
 
+		contextBlockElements := []slack.MixedElement{slack.NewTextBlockObject(
+			"mrkdwn",
+			fmt.Sprintf("<%s|%s> by <%s|%s>", htmlURL, typ, *user.HTMLURL, *user.Login),
+			false,
+			false,
+		)}
+		if !isReply && diffhunk != nil && *diffhunk != "" {
+			contextBlockElements = append(contextBlockElements, slack.NewTextBlockObject(
+				"mrkdwn",
+				"```\n"+*diffhunk+"\n```", // xxx escaping? etc
+				false,
+				false,
+			))
+		}
+
 		blocks := []slack.Block{
-			slack.NewContextBlock(
-				"",
-				slack.NewTextBlockObject(
-					"mrkdwn",
-					fmt.Sprintf("<%s|%s> by <%s|%s>", htmlURL, typ, *user.HTMLURL, *user.Login),
-					false,
-					false,
-				),
-			),
+			slack.NewContextBlock("", contextBlockElements...),
 			slack.NewSectionBlock(
 				slack.NewTextBlockObject(
 					"plain_text", // xxx convert GH to Slack markdown
@@ -202,86 +252,43 @@ func (s *Service) onReviewOrComment(ctx context.Context, repo *github.Repository
 		default:
 			options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx ?
 		}
-		return s.postToSlack(ctx, tenant, channel.ChannelID, commentID, options...)
-	})
-}
 
-func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestReviewCommentEvent) error {
-	if ev.Comment.Body == nil || *ev.Comment.Body == "" {
-		return nil
-	}
-	if ev.Comment.User != nil && ev.Comment.User.Type != nil && *ev.Comment.User.Type == "Bot" {
-		return nil
-	}
-	return s.Tenants.WithTenant(ctx, 0, *ev.Repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
-		debugf("In OnPRReviewComment, tenant ID %d", tenant.TenantID)
-
-		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
-		if err != nil {
-			return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
-		}
-		var (
-			options = []slack.MsgOption{slack.MsgOptionDisableLinkUnfurl()}
-			isReply bool
-		)
-		if ev.Comment.InReplyTo != nil && *ev.Comment.InReplyTo != 0 {
-			isReply = true
-			comment, err := s.Comments.ByCommentID(ctx, tenant.TenantID, channel.ChannelID, *ev.Comment.InReplyTo)
+		if isReply {
+			comment, err := s.Comments.ByCommentID(ctx, tenant.TenantID, channel.ChannelID, *reviewComment.Comment.InReplyTo)
 			if err != nil {
-				return errors.Wrapf(err, "finding comment in channel %s by commentID %d", channel.ChannelID, *ev.Comment.InReplyTo)
+				return errors.Wrap(err, "finding in-reply-to comment")
 			}
 			options = append(options, slack.MsgOptionTS(comment.ThreadTimestamp))
 		}
 
-		// xxx ensure channel exists
+		if action == "created" {
+			return s.postToSlack(ctx, tenant, channel.ChannelID, commentID, options...)
+		}
 
-		contextBlockElements := []slack.MixedElement{
-			slack.NewTextBlockObject(
-				"mrkdwn",
-				fmt.Sprintf("<%s|Review comment> by <%s|%s>", *ev.Comment.HTMLURL, *ev.Comment.User.HTMLURL, *ev.Comment.User.Login),
-				false,
-				false,
-			),
+		comment, err := s.Comments.ByCommentID(ctx, tenant.TenantID, channel.ChannelID, commentID)
+		if err != nil {
+			return errors.Wrap(err, "getting comment record")
 		}
-		if !isReply && ev.Comment.DiffHunk != nil && *ev.Comment.DiffHunk != "" {
-			contextBlockElements = append(
-				contextBlockElements,
-				slack.NewTextBlockObject(
-					"mrkdwn",
-					"```\n"+*ev.Comment.DiffHunk+"\n```", // xxx escaping? etc
-					false,
-					false,
-				),
-			)
-		}
-		blocks := []slack.Block{
-			slack.NewContextBlock("", contextBlockElements...),
-			slack.NewSectionBlock(
-				slack.NewTextBlockObject(
-					"plain_text", // xxx convert GH to Slack markdown
-					*ev.Comment.Body,
-					false,
-					false,
-				),
-				nil,
-				nil,
-			),
-		}
-		options = append(options, slack.MsgOptionBlocks(blocks...))
-		u, err := s.Users.ByGHLogin(ctx, tenant.TenantID, *ev.Comment.User.Login)
-		switch {
-		case errors.Is(err, ErrNotFound):
-			fmt.Printf("xxx did not find entry for GitHub user %s\n", *ev.Comment.User.Login)
-			// do nothing
-		case err != nil:
-			return errors.Wrapf(err, "looking up user %s", *ev.Comment.User.Login)
+
+		sc := tenant.SlackClient()
+
+		switch action {
+		case "edited":
+			_, _, _, err = sc.UpdateMessageContext(ctx, channel.ChannelID, comment.ThreadTimestamp, options...)
+			return errors.Wrap(err, "updating Slack comment")
+
+		case "deleted":
+			_, _, err = sc.DeleteMessageContext(ctx, channel.ChannelID, comment.ThreadTimestamp)
+			return errors.Wrap(err, "deleting Slack comment")
+
 		default:
-			fmt.Printf("xxx %s -> %s\n", *ev.Comment.User.Login, u.SlackID)
-			options = append(options, slack.MsgOptionUser(u.SlackID), slack.MsgOptionAsUser(true)) // xxx also slack.MsgOptionAsUser(true)?
+			return fmt.Errorf("unknown action %s", action)
 		}
-
-		return s.postToSlack(ctx, tenant, channel.ChannelID, *ev.Comment.ID, options...)
 	})
+}
+
+func (s *Service) OnPRReviewComment(ctx context.Context, ev *github.PullRequestReviewCommentEvent) error {
+	return s.someKindOfComment(ctx, nil, nil, ev)
 }
 
 func (s *Service) OnPRReviewThread(ctx context.Context, ev *github.PullRequestReviewThreadEvent) error {
@@ -300,7 +307,7 @@ func (s *Service) OnPRReviewThread(ctx context.Context, ev *github.PullRequestRe
 			// xxx slack.MsgOptionUser(...)?
 			// xxx slack.MsgOptionAsUser(...)?
 			slack.MsgOptionBlocks(slack.NewContextBlock("", slack.NewTextBlockObject(
-				"plain_text",
+				"mrkdwn",
 				fmt.Sprintf("_This thread was marked %s by %s_", *ev.Action, *ev.Sender.Login),
 				false,
 				false,
@@ -354,7 +361,7 @@ func (s *Service) reviewRequest(ctx context.Context, tenant *Tenant, ev *github.
 		// xxx slack.MsgOptionsTs(...)?
 		// xxx slack.MsgOptionUser(...)?
 		// xxx slack.MsgOptionAsUser(...)?
-		slack.MsgOptionBlocks(slack.NewContextBlock("", slack.NewTextBlockObject("plain_text", msg, false, false))),
+		slack.MsgOptionBlocks(slack.NewContextBlock("", slack.NewTextBlockObject("mrkdwn", msg, false, false))),
 	}
 	return s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 }
@@ -385,8 +392,22 @@ func (s *Service) PRUnassigned(ctx context.Context, tenant *Tenant, ev *github.P
 }
 
 func (s *Service) PRClosed(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	// xxx
-	return nil
+	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
+	if err != nil {
+		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
+	}
+	options := []slack.MsgOption{
+		// xxx slack.MsgOptionsTs(...)?
+		// xxx slack.MsgOptionUser(...)?
+		// xxx slack.MsgOptionAsUser(...)?
+		slack.MsgOptionBlocks(slack.NewContextBlock("", slack.NewTextBlockObject(
+			"mrkdwn",
+			fmt.Sprintf("_This PR was closed by %s_", *ev.Sender.Login),
+			false,
+			false,
+		))),
+	}
+	return s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 }
 
 func (s *Service) PREdited(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
@@ -395,8 +416,22 @@ func (s *Service) PREdited(ctx context.Context, tenant *Tenant, ev *github.PullR
 }
 
 func (s *Service) PRReopened(ctx context.Context, tenant *Tenant, ev *github.PullRequestEvent) error {
-	// xxx
-	return nil
+	channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, ev.Repo, *ev.PullRequest.Number)
+	if err != nil {
+		return errors.Wrapf(err, "getting channel for PR %d in %s", *ev.PullRequest.Number, *ev.Repo.HTMLURL)
+	}
+	options := []slack.MsgOption{
+		// xxx slack.MsgOptionsTs(...)?
+		// xxx slack.MsgOptionUser(...)?
+		// xxx slack.MsgOptionAsUser(...)?
+		slack.MsgOptionBlocks(slack.NewContextBlock("", slack.NewTextBlockObject(
+			"mrkdwn",
+			fmt.Sprintf("_This PR was reopened by %s_", *ev.Sender.Login),
+			false,
+			false,
+		))),
+	}
+	return s.postToSlack(ctx, tenant, channel.ChannelID, 0, options...)
 }
 
 func (s *Service) postToSlack(ctx context.Context, tenant *Tenant, channelID string, commentID int64, options ...slack.MsgOption) error {
