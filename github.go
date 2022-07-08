@@ -206,12 +206,12 @@ func (s *Service) someKindOfComment(ctx context.Context, review *github.PullRequ
 	return s.Tenants.WithTenant(ctx, 0, *repo.HTMLURL, "", func(ctx context.Context, tenant *Tenant) error {
 		debugf("In someKindOfComment, tenant ID %d", tenant.TenantID)
 
+		// xxx ensure channel exists
+
 		channel, err := s.Channels.ByRepoPR(ctx, tenant.TenantID, repo, prnum)
 		if err != nil {
 			return errors.Wrapf(err, "getting channel for PR %d in %s", prnum, *repo.HTMLURL)
 		}
-
-		// xxx ensure channel exists
 
 		var options []slack.MsgOption
 
@@ -225,7 +225,7 @@ func (s *Service) someKindOfComment(ctx context.Context, review *github.PullRequ
 			if !isReply && diffhunk != nil && *diffhunk != "" {
 				contextBlockElements = append(contextBlockElements, slack.NewTextBlockObject(
 					"mrkdwn",
-					"```\n"+*diffhunk+"\n```", // xxx escaping? etc
+					"```\n"+*diffhunk+"\n```", // xxx escaping? etc; narrow to last few lines
 					false,
 					false,
 				))
