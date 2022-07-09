@@ -160,7 +160,7 @@ func ghTokenToSlackBlock(tok markdown.Token) slack.Block {
 		return slack.NewRichTextBlock("", slack.NewRichTextSection(elems...))
 
 	case *markdown.Text:
-		elem := ghTextTokenToRichTextSectionElement(tok)
+		elem := ghTokenToRichTextSectionElement(tok, false, false, false, false)
 		return slack.NewRichTextBlock("", slack.NewRichTextSection(elem))
 	}
 }
