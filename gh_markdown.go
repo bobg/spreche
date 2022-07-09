@@ -156,7 +156,7 @@ func ghTokenToSlackBlock(tok markdown.Token) slack.Block {
 		return slack.NewImageBlock(tok.Src, altText, "", ghTokensToTextBlockObject(tok.Tokens))
 
 	case *markdown.Inline:
-		elems := ghTokensToRichTextSectionElements(tok.Children)
+		elems := ghTokensToRichTextSectionElements(tok.Children, false, false, false, false)
 		return slack.NewRichTextBlock("", slack.NewRichTextSection(elems...))
 
 	case *markdown.Text:
@@ -165,7 +165,7 @@ func ghTokenToSlackBlock(tok markdown.Token) slack.Block {
 	}
 }
 
-func ghTokensToRichTextSectionElements(tokens []markdown.Token) []slack.RichTextSectionElement {
+func ghTokensToRichTextSectionElements(tokens []markdown.Token, bold, italic, strike, code bool) []slack.RichTextSectionElement {
 	if len(tokens) == 0 {
 		return nil
 	}
@@ -173,7 +173,7 @@ func ghTokensToRichTextSectionElements(tokens []markdown.Token) []slack.RichText
 	tok := tokens[0]
 	if tok.Block() {
 		// Error case?
-		return ghTokensToRichTextSectionElements(tokens[1:])
+		return ghTokensToRichTextSectionElements(tokens[1:], bold, italic, strike, code)
 	}
 
 	if tok.Opening() {
@@ -185,7 +185,30 @@ func ghTokensToRichTextSectionElements(tokens []markdown.Token) []slack.RichText
 				continue
 			}
 
+			var (
+				newbold   = bold
+				newitalic = italic
+				newstrike = strike
+				newcode   = code
+			)
+
 			subTokens := tokens[1:i]
+			switch tok := tok.(type) {
+			case *markdown.EmphasisOpen:
+				newitalic = true
+
+			case *markdown.StrongOpen:
+				newbold = true
+
+			case *markdown.StrikethroughOpen:
+				newstrike = true
+
+			case *markdown.LinkOpen:
+				// xxx
+			}
+
+			elems := ghTokensToRichTextSectionElements(subTokens, newbold, newitalic, newstrike, newcode)
+			return append(elems, ghTokensToRichTextSectionElements(tokens[i+1:], bold, italic, strike, code)...)
 		}
 
 		// Reached the end without finding a matching close-token.
@@ -194,27 +217,57 @@ func ghTokensToRichTextSectionElements(tokens []markdown.Token) []slack.RichText
 
 	if tok.Closing() {
 		// Error case? (Should have encountered a matching open-token first.)
-		return ghTokensToRichTextSectionElements(tokens[1:])
+		return ghTokensToRichTextSectionElements(tokens[1:], bold, italic, strike, code)
 	}
 
 	// !tok.Opening() && !tok.Closing() && !tok.Block()
 
-	rest := ghTokensToRichTextSectionElements(tokens[1:])
-	if elem := ghTokenToRichTextSectionElement(tok); elem != nil {
+	rest := ghTokensToRichTextSectionElements(tokens[1:], bold, italic, strike, code)
+	if elem := ghTokenToRichTextSectionElements(tok, bold, italic, strike, code); elem != nil {
 		return append([]slack.RichTextSectionElement{elem}, rest...)
 	}
 	return rest
 }
 
 // Precondition: !tok.Opening() && !tok.Closing() && !tok.Block()
-func ghTokenToRichTextSectionElement(tok markdown.Token) slack.RichTextSectionElement {
+func ghTokenToRichTextSectionElements(tok markdown.Token, bold, italic, strike, code bool) []slack.RichTextSectionElement {
 	switch tok := tok.(type) {
-	case *markdown.CodeInline:
-	case *markdown.Softbreak:
-	case *markdown.Hardbreak:
 	case *markdown.HTMLInline:
+		// xxx
+
 	case *markdown.Image:
+		// xxx
+
 	case *markdown.Inline:
-	case *markdown.Text:
+		return ghTokensToRichTextSectionElements(tok.Children, bold, italic, strike, code)
+
+	default:
+		return []slack.RichTextSectionElement{ghTokenToRichTextSectionElement(tok, bold, italic, strike, code)}
 	}
+}
+
+func ghTokenToRichTextSectionElement(tok markdown.Token, bold, italic, strike, code bool) slack.RichTextSectionElement {
+	var content string
+
+	switch tok := tok.(type) {
+	case *markdown.Softbreak:
+		content = " "
+
+	case *markdown.Hardbreak:
+		content = "\n"
+
+	case *markdown.CodeInline:
+		content = tok.Content
+		code = true
+
+	case *markdown.Text:
+		content = tok.Content
+	}
+
+	return slack.NewRichTextSectionTextElement(content, &slack.RichTextSectionTextStyle{
+		Bold:   bold,
+		Italic: italic,
+		Strike: strike,
+		Code:   code,
+	})
 }
