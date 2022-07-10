@@ -1,11 +1,17 @@
 package spreche
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"strings"
 
 	"github.com/bobg/go-generics/slices"
+	"github.com/bobg/htree"
 	"github.com/golang-commonmark/markdown"
 	"github.com/slack-go/slack"
+	"golang.org/x/net/html"
 )
 
 func ghMarkdownToSlack(inp []byte) []slack.Block {
@@ -164,22 +170,57 @@ func ghTokensToSlackBlocksHelper(tokens []markdown.Token) []slack.Block {
 					result = append(result, slack.NewRichTextBlock("", &rtList{Elements: elems, Style: "bullet"}))
 
 				case *markdown.OrderedListOpen:
-				case *markdown.ListItemOpen:
+					sectionElements := ghTokensToRichTextSectionElements(subTokens, false, false, false, false)
+					elems, _ := slices.Map(sectionElements, func(_ int, secElem slack.RichTextSectionElement) (slack.RichTextElement, error) {
+						return slack.NewRichTextSection(secElem), nil
+					})
+					result = append(result, slack.NewRichTextBlock("", &rtList{Elements: elems, Style: "ordered"}))
+
 				case *markdown.HeadingOpen:
+					text := ghTokensToTextBlockObject(subTokens)
+					result = append(result, slack.NewHeaderBlock(text))
+
 				case *markdown.ParagraphOpen:
 					sectionElements := ghTokensToRichTextSectionElements(subTokens, false, false, false, false)
 					result = append(result, slack.NewRichTextBlock("", slack.NewRichTextSection(sectionElements...)))
 
-				case *markdown.TableOpen:
-				case *markdown.TheadOpen:
-				case *markdown.TrOpen:
-				case *markdown.ThOpen:
-				case *markdown.TbodyOpen:
-				case *markdown.TdOpen:
+				// case *markdown.ListItemOpen:
+				// case *markdown.TableOpen:
+				// case *markdown.TheadOpen:
+				// case *markdown.TrOpen:
+				// case *markdown.ThOpen:
+				// case *markdown.TbodyOpen:
+				// case *markdown.TdOpen:
+
+				default:
+					text := fmt.Sprintf("[unconverted token of type %T]", tok)
+					textObj := slack.NewTextBlockObject(slack.PlainTextType, text, false, true)
+					result = append(result, slack.NewContextBlock("", textObj))
 				}
 			} else {
 				// tok.Opening() && !tok.Block()
 
+				var elems []slack.RichTextSectionElement
+
+				if link, ok := tok.(*markdown.LinkOpen); ok {
+					text := ghTokensToPlainText(subTokens)
+					elems = []slack.RichTextSectionElement{slack.NewRichTextSectionLinkElement(link.Href, text, nil)}
+				} else {
+					var bold, italic, strike bool
+
+					switch tok.(type) {
+					case *markdown.EmphasisOpen:
+						italic = true
+					case *markdown.StrongOpen:
+						bold = true
+					case *markdown.StrikethroughOpen:
+						strike = true
+					}
+
+					elems = ghTokensToRichTextSectionElements(subTokens, bold, italic, strike, false)
+				}
+
+				result = append(result, slack.NewRichTextBlock("", slack.NewRichTextSection(elems...)))
 			}
 
 			return append(result, ghTokensToSlackBlocksHelper(tokens[i+1:])...)
@@ -212,7 +253,12 @@ func ghTokenToSlackBlock(tok markdown.Token) slack.Block {
 			return slack.NewRichTextBlock("", &slack.RichTextUnknown{Type: slack.RTEPreformatted, Raw: tok.Content})
 
 		case *markdown.HTMLBlock:
-			// xxx
+			node, err := html.Parse(strings.NewReader(tok.Content))
+			if err != nil {
+				return slack.NewTextBlockObject(slack.PlainTextType, "[unconverted HTMLBlock node]", true, true)
+			}
+			elems := htmlToRichTextSectionElements(node)
+			return slack.NewRichTextBlock("", slack.NewRichTextSection(elems...))
 
 		case *markdown.Hr:
 			return slack.NewDividerBlock()
@@ -224,12 +270,6 @@ func ghTokenToSlackBlock(tok markdown.Token) slack.Block {
 	// !tok.Opening() && !tok.Closing() && !tok.Block()
 
 	switch tok := tok.(type) {
-	case *markdown.CodeInline:
-	case *markdown.Softbreak:
-	case *markdown.Hardbreak:
-	case *markdown.HTMLInline:
-		// xxx
-
 	case *markdown.Image:
 		var altText string // xxx
 		return slack.NewImageBlock(tok.Src, altText, "", ghTokensToTextBlockObject(tok.Tokens))
@@ -241,9 +281,16 @@ func ghTokenToSlackBlock(tok markdown.Token) slack.Block {
 	case *markdown.Text:
 		elem := ghTokenToRichTextSectionElement(tok, false, false, false, false)
 		return slack.NewRichTextBlock("", slack.NewRichTextSection(elem))
-	}
 
-	return nil
+		// case *markdown.CodeInline:
+		// case *markdown.Softbreak:
+		// case *markdown.Hardbreak:
+		// case *markdown.HTMLInline:
+
+	default:
+		elems := ghTokenToRichTextSectionElements(tok, false, false, false, false)
+		return slack.NewRichTextBlock("", slack.NewRichTextSection(elems...))
+	}
 }
 
 func ghTokensToRichTextSectionElements(tokens []markdown.Token, bold, italic, strike, code bool) []slack.RichTextSectionElement {
@@ -267,28 +314,33 @@ func ghTokensToRichTextSectionElements(tokens []markdown.Token, bold, italic, st
 			}
 
 			var (
-				newbold   = bold
-				newitalic = italic
-				newstrike = strike
-				newcode   = code
+				subTokens = tokens[1:i]
+				elems     []slack.RichTextSectionElement
 			)
 
-			subTokens := tokens[1:i]
-			switch tok.(type) {
-			case *markdown.EmphasisOpen:
-				newitalic = true
+			if link, ok := tok.(*markdown.LinkOpen); ok {
+				text := ghTokensToPlainText(subTokens)
+				elems = []slack.RichTextSectionElement{slack.NewRichTextSectionLinkElement(link.Href, text, rtStyle(bold, italic, strike, code))}
+			} else {
+				var (
+					newbold   = bold
+					newitalic = italic
+					newstrike = strike
+				)
 
-			case *markdown.StrongOpen:
-				newbold = true
+				switch tok.(type) {
+				case *markdown.EmphasisOpen:
+					newitalic = true
 
-			case *markdown.StrikethroughOpen:
-				newstrike = true
+				case *markdown.StrongOpen:
+					newbold = true
 
-			case *markdown.LinkOpen:
-				// xxx
+				case *markdown.StrikethroughOpen:
+					newstrike = true
+				}
+
+				elems = ghTokensToRichTextSectionElements(subTokens, newbold, newitalic, newstrike, code)
 			}
-
-			elems := ghTokensToRichTextSectionElements(subTokens, newbold, newitalic, newstrike, newcode)
 			return append(elems, ghTokensToRichTextSectionElements(tokens[i+1:], bold, italic, strike, code)...)
 		}
 
@@ -311,10 +363,14 @@ func ghTokensToRichTextSectionElements(tokens []markdown.Token, bold, italic, st
 func ghTokenToRichTextSectionElements(tok markdown.Token, bold, italic, strike, code bool) []slack.RichTextSectionElement {
 	switch tok := tok.(type) {
 	case *markdown.HTMLInline:
-		// xxx
+		node, err := html.Parse(strings.NewReader(tok.Content))
+		if err != nil {
+			return []slack.RichTextSectionElement{slack.NewRichTextSectionTextElement("[unconverted HTMLInline node]", nil)}
+		}
+		return htmlToRichTextSectionElements(node)
 
 	case *markdown.Image:
-		// xxx
+		return []slack.RichTextSectionElement{slack.NewRichTextSectionTextElement(fmt.Sprintf("[image %s]", ghTokensToPlainText(tok.Tokens)), nil)}
 
 	case *markdown.Inline:
 		return ghTokensToRichTextSectionElements(tok.Children, bold, italic, strike, code)
@@ -322,8 +378,6 @@ func ghTokenToRichTextSectionElements(tok markdown.Token, bold, italic, strike, 
 	default:
 		return []slack.RichTextSectionElement{ghTokenToRichTextSectionElement(tok, bold, italic, strike, code)}
 	}
-
-	return nil
 }
 
 func ghTokenToRichTextSectionElement(tok markdown.Token, bold, italic, strike, code bool) slack.RichTextSectionElement {
@@ -344,19 +398,71 @@ func ghTokenToRichTextSectionElement(tok markdown.Token, bold, italic, strike, c
 		content = tok.Content
 	}
 
-	var style *slack.RichTextSectionTextStyle
-	if bold || italic || strike || code {
-		style = &slack.RichTextSectionTextStyle{
-			Bold:   bold,
-			Italic: italic,
-			Strike: strike,
-			Code:   code,
-		}
-	}
+	return slack.NewRichTextSectionTextElement(content, rtStyle(bold, italic, strike, code))
+}
 
-	return slack.NewRichTextSectionTextElement(content, style)
+func rtStyle(bold, italic, strike, code bool) *slack.RichTextSectionTextStyle {
+	if !bold && !italic && !strike && !code {
+		return nil
+	}
+	return &slack.RichTextSectionTextStyle{
+		Bold:   bold,
+		Italic: italic,
+		Strike: strike,
+		Code:   code,
+	}
 }
 
 func ghTokensToTextBlockObject(tokens []markdown.Token) *slack.TextBlockObject {
-	return slack.NewTextBlockObject("mrkdwn", "xxx", false, false)
+	text := ghTokensToPlainText(tokens)
+	return slack.NewTextBlockObject(slack.PlainTextType, text, true, true)
+}
+
+func ghTokensToPlainText(tokens []markdown.Token) string {
+	buf := new(bytes.Buffer)
+	ghTokensToPlainTextHelper(buf, tokens)
+	return buf.String()
+}
+
+func ghTokensToPlainTextHelper(w io.Writer, tokens []markdown.Token) {
+	for _, tok := range tokens {
+		ghTokenToPlainText(w, tok)
+	}
+}
+
+func ghTokenToPlainText(w io.Writer, tok markdown.Token) {
+	switch tok := tok.(type) {
+	case *markdown.CodeInline:
+		fmt.Fprint(w, tok.Content)
+
+	case *markdown.Softbreak:
+		fmt.Fprint(w, " ")
+
+	case *markdown.Hardbreak:
+		fmt.Fprint(w, "\n")
+
+	case *markdown.HTMLInline:
+		node, err := html.Parse(strings.NewReader(tok.Content))
+		if err != nil {
+			fmt.Fprint(w, "[unconverted HTMLInline node]")
+			return
+		}
+		htree.WriteText(w, node)
+
+	case *markdown.Image:
+		fmt.Fprintf(w, "[image %s]", ghTokensToPlainText(tok.Tokens))
+
+	case *markdown.Inline:
+		ghTokensToPlainTextHelper(w, tok.Children)
+
+	case *markdown.Text:
+		fmt.Fprint(w, tok.Content)
+	}
+}
+
+func htmlToRichTextSectionElements(node *html.Node) []slack.RichTextSectionElement {
+	// TODO: actual rich text
+	buf := new(bytes.Buffer)
+	htree.WriteText(buf, node)
+	return []slack.RichTextSectionElement{slack.NewRichTextSectionTextElement(buf.String(), nil)}
 }
