@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
+	"github.com/bobg/go-generics/slices"
 	"github.com/google/go-github/v45/github"
 	"github.com/pkg/errors"
 	"github.com/slack-go/slack"
@@ -223,12 +225,25 @@ func (s *Service) someKindOfComment(ctx context.Context, review *github.PullRequ
 				false,
 			)}
 			if !isReply && diffhunk != nil && *diffhunk != "" {
-				contextBlockElements = append(contextBlockElements, slack.NewTextBlockObject(
-					"mrkdwn",
-					"```\n"+*diffhunk+"\n```", // xxx escaping? etc; narrow to last few lines
-					false,
-					false,
-				))
+				// Trunc the hunk.
+				lines := strings.Split(*diffhunk, "\n")
+
+				// Trim off empty trailing lines
+				for len(lines) > 0 && lines[len(lines)-1] == "" {
+					lines = lines[:len(lines)-1]
+				}
+				if len(lines) > 3 {
+					lines = slices.RemoveTo(lines, -3, 0)
+				}
+				contextBlockElements = append(
+					contextBlockElements,
+					slack.NewTextBlockObject(
+						"mrkdwn",
+						"```\n"+strings.Join(lines, "\n")+"\n```", // xxx escaping?
+						false,
+						false,
+					),
+				)
 			}
 
 			blocks := []slack.Block{
