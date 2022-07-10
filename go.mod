@@ -4,10 +4,12 @@ go 1.18
 
 require (
 	github.com/bobg/go-generics v0.4.0
+	github.com/bobg/htree v1.2.1
 	github.com/bobg/mid v1.7.1
 	github.com/bobg/sqlutil v1.1.0
 	github.com/bobg/subcmd/v2 v2.0.0
 	github.com/bradleyfalzon/ghinstallation/v2 v2.0.4
+	github.com/davecgh/go-spew v1.1.1
 	github.com/golang-commonmark/markdown v0.0.0-20180910011815-a8f139058164
 	github.com/google/go-cmp v0.5.8
 	github.com/google/go-github/v45 v45.1.0
@@ -16,11 +18,11 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/pressly/goose/v3 v3.6.1
 	github.com/slack-go/slack v0.10.3
+	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	github.com/bobg/htree v1.2.1 // indirect
 	github.com/golang-commonmark/html v0.0.0-20180910111043-7d7c804e1d46 // indirect
 	github.com/golang-commonmark/linkify v0.0.0-20180910111149-f05efb453a0e // indirect
 	github.com/golang-commonmark/mdurl v0.0.0-20180910110917-8d018c6567d6 // indirect
@@ -32,5 +34,4 @@ require (
 	github.com/opennota/wd v0.0.0-20180911144301-b446539ab1e7 // indirect
 	github.com/russross/blackfriday v1.6.0 // indirect
 	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5 // indirect
-	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d // indirect
 )

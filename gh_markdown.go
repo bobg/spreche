@@ -147,7 +147,10 @@ func ghTokensToSlackBlocksHelper(tokens []markdown.Token) []slack.Block {
 			if !tokens[i].Closing() {
 				continue
 			}
-			if tokens[i].Level() != tok.Level() {
+			if tokens[i].Tag() != tok.Tag() {
+				continue
+			}
+			if tokens[i].Level() > tok.Level() {
 				continue
 			}
 
@@ -309,7 +312,10 @@ func ghTokensToRichTextSectionElements(tokens []markdown.Token, bold, italic, st
 			if !tokens[i].Closing() {
 				continue
 			}
-			if tokens[i].Level() != tok.Level() {
+			if tokens[i].Tag() != tok.Tag() {
+				continue
+			}
+			if tokens[i].Level() > tok.Level() {
 				continue
 			}
 
