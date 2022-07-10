@@ -24,7 +24,7 @@ func TestGHMarkdown(t *testing.T) {
 			}
 
 			got := ghMarkdownToSlack(data)
-			gotJSON, err := json.Marshal(got)
+			gotJSON, err := json.MarshalIndent(got, "", "  ")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -33,6 +33,8 @@ func TestGHMarkdown(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
+			t.Log(string(gotJSON))
 
 			output := strings.TrimSuffix(input, ".input")
 			output += ".output"

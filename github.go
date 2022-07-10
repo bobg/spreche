@@ -2,6 +2,7 @@ package spreche
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -234,6 +235,9 @@ func (s *Service) someKindOfComment(ctx context.Context, review *github.PullRequ
 			blocks := []slack.Block{slack.NewContextBlock("", contextBlockElements...)}
 			blocks = append(blocks, ghMarkdownToSlack([]byte(*body))...)
 			options = []slack.MsgOption{slack.MsgOptionBlocks(blocks...), slack.MsgOptionDisableLinkUnfurl()}
+
+			blocksJSON, _ := json.MarshalIndent(blocks, "", "  ")
+			fmt.Printf("xxx sending these blocks to Slack:\n%s\n", string(blocksJSON))
 
 			u, err := s.Users.ByGHLogin(ctx, tenant.TenantID, *user.Login)
 			switch {
