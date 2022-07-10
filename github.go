@@ -231,20 +231,8 @@ func (s *Service) someKindOfComment(ctx context.Context, review *github.PullRequ
 				))
 			}
 
-			blocks := []slack.Block{
-				slack.NewContextBlock("", contextBlockElements...),
-				slack.NewSectionBlock(
-					slack.NewTextBlockObject(
-						"plain_text", // xxx convert GH to Slack markdown
-						*body,
-						false,
-						false,
-					),
-					nil,
-					nil,
-				),
-			}
-
+			blocks := []slack.Block{slack.NewContextBlock("", contextBlockElements...)}
+			blocks = append(blocks, ghMarkdownToSlack([]byte(*body))...)
 			options = []slack.MsgOption{slack.MsgOptionBlocks(blocks...), slack.MsgOptionDisableLinkUnfurl()}
 
 			u, err := s.Users.ByGHLogin(ctx, tenant.TenantID, *user.Login)
@@ -490,7 +478,7 @@ func prBodyPostOptions(pr *github.PullRequest) []slack.MsgOption {
 	}
 	return []slack.MsgOption{
 		slack.MsgOptionDisableLinkUnfurl(),
-		slack.MsgOptionText(body, false), // xxx convert GH Markdown to Slack mrkdwn (using https://github.com/eritikass/githubmarkdownconvertergo ?)
+		slack.MsgOptionBlocks(ghMarkdownToSlack([]byte(body))...),
 	}
 }
 
