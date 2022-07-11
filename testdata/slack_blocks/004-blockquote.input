@@ -1,0 +1,30 @@
+{
+  "event": {
+    "blocks": [
+      {
+        "type": "rich_text",
+        "block_id": "2tq",
+        "elements": [
+          {
+            "type": "rich_text_section",
+            "elements": [
+              {
+                "type": "text",
+                "text": "Here is a comment with some blockquoted text.\n"
+              }
+            ]
+          },
+          {
+            "type": "rich_text_quote",
+            "elements": [
+              {
+                "type": "text",
+                "text": "This is the quoted text."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
