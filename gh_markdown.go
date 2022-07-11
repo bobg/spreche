@@ -17,7 +17,24 @@ import (
 func ghMarkdownToSlack(inp []byte) []slack.Block {
 	md := markdown.New() // xxx options?
 	tokens := md.Parse(inp)
-	return ghTokensToSlackBlocks(tokens)
+	blocks := ghTokensToSlackBlocks(tokens)
+	for i, block := range blocks {
+		rblock, ok := block.(*slack.RichTextBlock)
+		if !ok {
+			continue
+		}
+
+		// Cannot use rich-text blocks on input to the Slack API (yet?).
+		// See: https://github.com/slackapi/java-slack-sdk/issues/876#issuecomment-956557504
+		// Downconvert them to TextBlockObjects with mrkdwn.
+
+		buf := new(bytes.Buffer)
+		richTextBlockToMrkdwn(&lineWriter{w: buf}, rblock)
+		tblock := slack.NewTextBlockObject(slack.MarkdownType, buf.String(), false, false)
+		blocks[i] = tblock
+	}
+
+	return blocks
 }
 
 // Token types and properties in github.com/golang-commonmark/markdown v0.0.0-20180910011815-a8f139058164
@@ -471,4 +488,176 @@ func htmlToRichTextSectionElements(node *html.Node) []slack.RichTextSectionEleme
 	buf := new(bytes.Buffer)
 	htree.WriteText(buf, node)
 	return []slack.RichTextSectionElement{slack.NewRichTextSectionTextElement(buf.String(), nil)}
+}
+
+func richTextBlockToMrkdwn(w *lineWriter, block *slack.RichTextBlock) {
+	for _, elem := range block.Elements {
+		w.ensurePar()
+		richTextElementToMrkdwn(w, elem)
+	}
+}
+
+func richTextElementToMrkdwn(w *lineWriter, elem slack.RichTextElement) {
+	switch elem := elem.(type) {
+	case *slack.RichTextSection:
+		for _, secElem := range elem.Elements {
+			richTextSectionElementToMrkdwn(w, secElem)
+		}
+
+	case *rtList:
+		for i, sub := range elem.Elements {
+			w.ensureLine()
+			if elem.Style == "bullet" {
+				fmt.Fprint(w, "- ")
+			} else {
+				fmt.Fprintf(w, "%d. ", i+1)
+			}
+			richTextElementToMrkdwn(w, sub)
+		}
+
+	case *rtQuote:
+		buf := new(bytes.Buffer)
+		for _, sub := range elem.Elements {
+			richTextElementToMrkdwn(&lineWriter{w: buf}, sub)
+		}
+		w.ensureLine()
+		lines := strings.Split(buf.String(), "\n")
+		for _, line := range lines {
+			fmt.Fprintf(w, "> %s\n", line) // TODO: blockquoting levels
+		}
+
+	case *slack.RichTextUnknown:
+		switch elem.RichTextElementType() {
+		case slack.RTEList:
+			// xxx handled above
+
+		case slack.RTEPreformatted:
+			w.ensureLine()
+			fmt.Fprintf(w, "```\n%s", elem.Raw)
+			w.ensureLine()
+			fmt.Fprintln(w, "```")
+
+		case slack.RTEQuote:
+			// xxx handled above
+
+		case slack.RTESection:
+			// xxx ?
+			fmt.Fprint(w, elem.Raw)
+
+		default:
+			// xxx ?
+			fmt.Fprint(w, elem.Raw)
+		}
+	}
+}
+
+func richTextSectionElementToMrkdwn(w io.Writer, elem slack.RichTextSectionElement) {
+	switch elem := elem.(type) {
+	case *slack.RichTextSectionTextElement:
+		richTextStrToMrkdwn(w, elem.Text, elem.Style)
+
+	case *slack.RichTextSectionChannelElement:
+		richTextStrToMrkdwn(w, elem.ChannelID, elem.Style)
+
+	case *slack.RichTextSectionUserElement:
+		richTextStrToMrkdwn(w, elem.UserID, elem.Style)
+
+	case *slack.RichTextSectionEmojiElement:
+		richTextStrToMrkdwn(w, elem.Name, elem.Style)
+
+	case *slack.RichTextSectionLinkElement:
+		richTextStrToMrkdwn(w, fmt.Sprintf("<%s|%s>", elem.URL, elem.Text), elem.Style)
+
+	case *slack.RichTextSectionTeamElement:
+		richTextStrToMrkdwn(w, elem.TeamID, elem.Style)
+
+	case *slack.RichTextSectionUserGroupElement:
+		richTextStrToMrkdwn(w, elem.UsergroupID, nil)
+
+	case *slack.RichTextSectionDateElement:
+		richTextStrToMrkdwn(w, elem.Timestamp, nil)
+
+	case *slack.RichTextSectionBroadcastElement:
+		richTextStrToMrkdwn(w, elem.Range, nil)
+
+	case *slack.RichTextSectionColorElement:
+		richTextStrToMrkdwn(w, elem.Value, nil)
+
+	case *slack.RichTextSectionUnknownElement:
+		richTextStrToMrkdwn(w, elem.Raw, nil)
+	}
+}
+
+func richTextStrToMrkdwn(w io.Writer, str string, style *slack.RichTextSectionTextStyle) {
+	if style != nil {
+		if style.Code {
+			fmt.Fprint(w, "`")
+			defer fmt.Fprint(w, "`")
+		}
+		if style.Strike {
+			fmt.Fprint(w, "~")
+			defer fmt.Fprint(w, "~")
+		}
+		if style.Italic {
+			fmt.Fprint(w, "_")
+			defer fmt.Fprint(w, "_")
+		}
+		if style.Bold {
+			fmt.Fprint(w, "*")
+			defer fmt.Fprint(w, "*")
+		}
+	}
+	fmt.Fprint(w, str)
+}
+
+type lineWriter struct {
+	w        io.Writer
+	anyBytes bool
+	newlines int
+}
+
+var _ io.Writer = &lineWriter{}
+
+func (w *lineWriter) Write(inp []byte) (int, error) {
+	res, err := w.w.Write(inp)
+	if err == nil { // sic
+		if res > 0 {
+			w.anyBytes = true
+		}
+		for _, b := range inp {
+			if b == '\n' {
+				w.newlines++
+			} else {
+				w.newlines = 0
+			}
+		}
+	}
+	return res, err
+}
+
+func (w *lineWriter) ensureLine() error {
+	if !w.anyBytes {
+		return nil
+	}
+	if w.newlines > 0 {
+		return nil
+	}
+	_, err := w.Write([]byte{'\n'})
+	return err
+}
+
+func (w *lineWriter) ensurePar() error {
+	if !w.anyBytes {
+		return nil
+	}
+	switch w.newlines {
+	case 0:
+		_, err := w.Write([]byte{'\n', '\n'})
+		return err
+	case 1:
+		_, err := w.Write([]byte{'\n'})
+		return err
+	default:
+		return nil
+	}
 }
