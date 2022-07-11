@@ -1,6 +1,9 @@
 [
   {
-    "text": "How well does *bold* work?",
-    "type": "mrkdwn"
+    "text": {
+      "text": "How well does *bold* work?",
+      "type": "mrkdwn"
+    },
+    "type": "section"
   }
 ]

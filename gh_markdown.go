@@ -30,8 +30,7 @@ func ghMarkdownToSlack(inp []byte) []slack.Block {
 
 		buf := new(bytes.Buffer)
 		richTextBlockToMrkdwn(&lineWriter{w: buf}, rblock)
-		tblock := slack.NewTextBlockObject(slack.MarkdownType, buf.String(), false, false)
-		blocks[i] = tblock
+		blocks[i] = slack.NewSectionBlock(slack.NewTextBlockObject(slack.MarkdownType, buf.String(), false, false), nil, nil)
 	}
 
 	return blocks

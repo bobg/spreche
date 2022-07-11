@@ -1,6 +1,9 @@
 [
   {
-    "text": "Here comes a bullet list.\n\n- One\n- Two\n- Three",
-    "type": "mrkdwn"
+    "text": {
+      "text": "Here comes a bullet list.\n\n- One\n- Two\n- Three",
+      "type": "mrkdwn"
+    },
+    "type": "section"
   }
 ]
