@@ -13,7 +13,7 @@ import (
 	"github.com/slack-go/slack"
 )
 
-func (s *Service) OnGHWebhook(w http.ResponseWriter, req *http.Request) error {
+func (s *Service) OnGHWebhook(_ http.ResponseWriter, req *http.Request) error {
 	ctx := req.Context()
 
 	payload, err := github.ValidatePayload(req, []byte(s.GHSecret))
@@ -21,6 +21,11 @@ func (s *Service) OnGHWebhook(w http.ResponseWriter, req *http.Request) error {
 		return errors.Wrap(err, "validating webhook payload")
 	}
 	typ := github.WebHookType(req)
+
+	return s.OnValidGHWebhook(ctx, typ, payload)
+}
+
+func (s *Service) OnValidGHWebhook(ctx context.Context, typ string, payload []byte) error {
 	ev, err := github.ParseWebHook(typ, payload)
 	if err != nil {
 		return errors.Wrap(err, "parsing webhook payload")

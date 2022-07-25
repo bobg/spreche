@@ -23,6 +23,16 @@ import (
 )
 
 func main() {
+	ctx := context.Background()
+
+	if len(os.Args) <= 1 {
+		err := doLambda(ctx, nil)
+		if err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
 	var c maincmd
 	err := subcmd.Run(context.Background(), c, os.Args[1:])
 	if err != nil {
@@ -34,6 +44,7 @@ type maincmd struct{}
 
 func (maincmd) Subcmds() subcmd.Map {
 	return subcmd.Commands(
+		"lambda", doLambda, "run as an AWS lambda function", nil,
 		"serve", doServe, "run the spreche server", subcmd.Params(
 			"-config", subcmd.String, "config.yml", "path to config file",
 			"-ngrok", subcmd.Bool, false, "launch ngrok tunnel",
